@@ -1,15 +1,20 @@
 use std::error;
 use std::fmt;
 use std::option;
+use crate::printer;
 
 #[derive(Debug)]
 pub struct SyntaxError;
+
 #[derive(Debug)]
 pub struct InternalError;
 
+#[derive(Debug)]
+pub struct InvalidCommand;
+
 impl fmt::Display for SyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(error) syntax error")
+        write!(f, "{}", printer::print_err("ERR syntax error"))
     }
 }
 
@@ -23,12 +28,27 @@ impl error::Error for SyntaxError {
 
 impl fmt::Display for InternalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(error) internal error")
+        write!(f, "{}", printer::print_err("ERR internal error"))
     }
 }
 
 // This is important for other errors to wrap this one.
 impl error::Error for InternalError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        // Generic error, underlying cause isn't tracked.
+        None
+    }
+}
+
+
+impl fmt::Display for InvalidCommand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", printer::print_err("ERR invalid command"))
+    }
+}
+
+// This is important for other errors to wrap this one.
+impl error::Error for InvalidCommand {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         // Generic error, underlying cause isn't tracked.
         None

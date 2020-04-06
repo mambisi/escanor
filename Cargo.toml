@@ -3,7 +3,6 @@ name = "escanor"
 version = "0.1.0"
 authors = ["Mambisi Zempare <lilbizi96@gmail.com>"]
 edition = "2018"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -14,6 +13,14 @@ console = "0.10.0"
 log = "0.4.0"
 regex = "1"
 env_logger = "0.7.1"
+bytes = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [dev-dependencies]
 env_logger = "0.7.1"
+criterion = "0.3"
+
+[[bench]]
+name = "bench_main"
+harness = false

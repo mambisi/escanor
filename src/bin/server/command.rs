@@ -1,7 +1,7 @@
 extern crate regex;
 
 use crate::db;
-use crate::db::{DataType, RecordEntry};
+use crate::db::{DataType, ESRecord};
 use crate::error;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use std::borrow::Borrow;
 use regex::Regex;
 use std::collections::BTreeMap;
 
-const DATA_TYPES: [&str; 4] = ["string", "number", "json", "point"];
+const DATA_TYPES: [&str; 4] = ["string", "int", "json", "point"];
 
 pub fn parse(cmd: &String) -> Result<Box<dyn Command>, error::SyntaxError> {
     let tokens: Vec<String> = tokenize(cmd.as_str());
@@ -51,6 +51,7 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let arg_ex_cmd = itr.next().unwrap_or(&default_value).as_str();
 
         if arg_ex_cmd == "" {
+
             return Ok(Box::new(SetCmd {
                 arg_key: arg_key.to_owned(),
                 arg_type: get_type(arg_type),
@@ -68,21 +69,28 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
             }));
         }
     }
-
     else if cmd == "get" {
         let arg_key = itr.next().unwrap_or(&default_value);
         if arg_key.eq("") { return Err(error::SyntaxError); }
-
-
         return Ok(Box::new(GetCmd {
             arg_key : arg_key.to_owned()
         }));
-
+    }
+    else if cmd == "del" {
+        let arg_key = itr.next().unwrap_or(&default_value);
+        if arg_key.eq("") { return Err(error::SyntaxError); }
+        return Ok(Box::new(DelCmd {
+            arg_key : arg_key.to_owned()
+        }));
+    }
+    else if cmd == "keys" {
+        return Ok(Box::new(KeysCmd));
     }
     Err(error::SyntaxError)
 }
 
 fn tokenize(cmd: &str) -> Vec<String> {
+
     let mut tokens: Vec<String> = vec![];
 
     let cmd = cmd.trim();
@@ -91,7 +99,7 @@ fn tokenize(cmd: &str) -> Vec<String> {
     let mut in_string = false;
     let mut next_char = '\0';
     let mut prev_char = '\0';
-    let text_qualifier = '"';
+    let text_qualifier = '`';
     let text_delimiter = ' ';
 
     for (i, current_char) in cmd.chars().enumerate() {
@@ -154,9 +162,13 @@ pub struct GetCmd {
 }
 
 // Grammar > del [key]
+#[derive(Debug)]
 pub struct DelCmd {
     pub arg_key: String
 }
+
+#[derive(Debug)]
+pub struct KeysCmd;
 
 
 fn is_type_valid(t: &String) -> bool {
@@ -171,8 +183,8 @@ fn is_type_valid(t: &String) -> bool {
 fn get_type(t: &String) -> db::DataType {
     if t.eq("string") {
         return db::DataType::String;
-    } else if t.eq("number") {
-        return db::DataType::Number;
+    } else if t.eq("int") {
+        return db::DataType::Integer;
     } else if t.eq("json") {
         return db::DataType::Json;
     } else if t.eq("point") {
@@ -192,4 +204,28 @@ impl Command for GetCmd {
     fn execute(&self) -> String{
         db::get(self)
     }
+}
+
+impl Command for DelCmd {
+    fn execute(&self) -> String{
+        db::del(self)
+    }
+}
+
+impl Command for KeysCmd {
+    fn execute(&self) -> String{
+        db::list_keys(self)
+    }
+}
+
+#[test]
+fn set_command_test_valid_with_expiration(){
+    let ucmd = String::from(r##"`set` `name` `{"name" : "json"}`"##);
+    match parse(&ucmd){
+        Ok(c) => {
+            c.execute();
+            assert!(true)
+        },
+        Err(e) => assert!(false,e.to_string())
+    };
 }

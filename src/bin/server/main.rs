@@ -6,22 +6,21 @@ extern crate log;
 extern crate env_logger;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate serde_json;
 //modules
 mod network;
 mod db;
 mod command;
 mod error;
-
-#[cfg(test)]
-mod tests;
-
-
+mod printer;
+mod util;
 use clap::{App, Arg};
 
 use console::style;
 use std::sync::{Arc, RwLock};
 use std::collections::BTreeMap;
-use crate::db::RecordEntry;
+use crate::db::ESRecord;
 
 #[tokio::main]
 async fn main() {
