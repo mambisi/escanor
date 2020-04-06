@@ -23,9 +23,7 @@ pub fn print_from_error(error: &dyn error::Error) -> String {
 pub fn print_record(record: &ESRecord) -> String {
     let prefix = match record.data_type {
         DataType::String => STRING_PREFIX,
-        DataType::Json => JSON_PREFIX,
         DataType::Integer => INT_PREFIX,
-        DataType::Point => POINT_PREFIX,
     };
 
     if prefix == STRING_PREFIX {

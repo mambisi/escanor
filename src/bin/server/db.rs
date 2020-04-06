@@ -1,6 +1,7 @@
 extern crate bytes;
 
-use std::collections::BTreeMap;
+use crate::geo::{Circle, GeoPoint2D};
+use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::sync::RwLock;
 use std::mem;
@@ -15,14 +16,15 @@ use std::rc::Rc;
 
 lazy_static! {
     static ref BTREE : Arc<RwLock<BTreeMap<String, ESRecord>>> = Arc::new(RwLock::new(BTreeMap::new()));
+    static ref GEO_BTREE : Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
 }
+
+
 
 #[derive(Clone, Debug)]
 pub enum DataType {
     String,
-    Integer,
-    Point,
-    Json,
+    Integer
 }
 
 #[derive(Clone, Debug)]
@@ -44,12 +46,12 @@ pub fn set(cmd: &SetCmd) -> String {
     };
 
 
-    match map.insert(record.key.to_owned(),record.to_owned() ){
-        Some(prev_rec)  => {
-            println!("update: {}", prev_rec.key);
+    match map.insert(record.key.to_owned(), record.to_owned()) {
+        Some(prev_rec) => {
+            info!("update key {}", prev_rec.key);
         }
         None => {
-            println!("new: {}", record.key);
+            info!("insert key {}", record.key);
         }
     };
 
@@ -88,7 +90,7 @@ pub fn list_keys(cmd: &KeysCmd) -> String {
     let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE.clone();
     let map = arc.read().unwrap();
 
-    let mut keys : Vec<&String> = vec![];
+    let mut keys: Vec<&String> = vec![];
 
     for key in map.keys() {
         keys.push(key)
@@ -96,3 +98,4 @@ pub fn list_keys(cmd: &KeysCmd) -> String {
 
     print_string_arr(keys)
 }
+

@@ -3,6 +3,7 @@ extern crate regex;
 use crate::db;
 use crate::db::{DataType, ESRecord};
 use crate::error;
+use crate::util;
 use std::rc::Rc;
 use std::sync::Arc;
 use crate::error::SyntaxError;
@@ -11,7 +12,6 @@ use std::borrow::Borrow;
 use regex::Regex;
 use std::collections::BTreeMap;
 
-const DATA_TYPES: [&str; 4] = ["string", "int", "json", "point"];
 
 pub fn parse(cmd: &String) -> Result<Box<dyn Command>, error::SyntaxError> {
     let tokens: Vec<String> = tokenize(cmd.as_str());
@@ -36,17 +36,8 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let arg_key = itr.next().unwrap_or(&default_value);
         if arg_key.eq("") { return Err(error::SyntaxError); }
 
-        let mut arg_value: String = String::from("");
-
-        let mut arg_type = itr.next().unwrap_or(&default_value);
-        if arg_type == "" { return Err(error::SyntaxError); } else if is_type_valid(arg_type) {} else {
-            arg_value = arg_type.to_owned();
-            arg_type = &default_type
-        }
-
-        if arg_value.is_empty() {
-            arg_value = itr.next().unwrap_or(&default_value).to_owned();
-        }
+        let arg_value = itr.next().unwrap_or(&default_value);
+        if arg_key.eq("") { return Err(error::SyntaxError); }
 
         let arg_ex_cmd = itr.next().unwrap_or(&default_value).as_str();
 
@@ -54,8 +45,8 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
 
             return Ok(Box::new(SetCmd {
                 arg_key: arg_key.to_owned(),
-                arg_type: get_type(arg_type),
-                arg_value,
+                arg_type: get_type(arg_value),
+                arg_value: arg_value.to_owned(),
                 arg_exp: 0,
             }));
         } else if arg_ex_cmd == "ex" {
@@ -63,8 +54,8 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
             let arg_exp = arg_next.parse::<u32>().unwrap_or(0);
             return Ok(Box::new(SetCmd {
                 arg_key: arg_key.to_owned(),
-                arg_type: get_type(arg_type),
-                arg_value,
+                arg_type: get_type(arg_value),
+                arg_value: arg_value.to_owned(),
                 arg_exp,
             }));
         }
@@ -171,26 +162,8 @@ pub struct DelCmd {
 pub struct KeysCmd;
 
 
-fn is_type_valid(t: &String) -> bool {
-    for i in DATA_TYPES.iter() {
-        if t.eq(i) {
-            return true;
-        }
-    }
-    false
-}
-
 fn get_type(t: &String) -> db::DataType {
-    if t.eq("string") {
-        return db::DataType::String;
-    } else if t.eq("int") {
-        return db::DataType::Integer;
-    } else if t.eq("json") {
-        return db::DataType::Json;
-    } else if t.eq("point") {
-        return db::DataType::Point;
-    }
-    return db::DataType::String;
+    if util::is_integer(t) {db::DataType::Integer} else {db::DataType::String}
 }
 
 

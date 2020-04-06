@@ -38,12 +38,12 @@ fn is_numeric_benchmark(c: &mut Criterion) {
 }
 
 fn is_numeric_with_regex_benchmark_with_error(c: &mut Criterion) {
-    let float_str = String::from("-8e7983m");
+    let float_str = String::from("8e7983m2314081239840u");
     c.bench_function("is_numeric_with_regex", |b| b.iter(|| is_numeric_with_regex(&float_str)));
 }
 
 fn is_numeric_benchmark_with_error(c: &mut Criterion) {
-    let float_str = String::from("-8e7983m");
+    let float_str = String::from("8e7983m2314081239840u");
     c.bench_function("is_numeric", |b| b.iter(|| is_numeric(&float_str)));
 }
 

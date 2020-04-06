@@ -14,7 +14,7 @@ pub struct InvalidCommand;
 
 impl fmt::Display for SyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", printer::print_err("ERR syntax error"))
+        write!(f, "{}", "ERR syntax error")
     }
 }
 
@@ -28,7 +28,7 @@ impl error::Error for SyntaxError {
 
 impl fmt::Display for InternalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", printer::print_err("ERR internal error"))
+        write!(f, "{}", "ERR internal error")
     }
 }
 
@@ -43,7 +43,7 @@ impl error::Error for InternalError {
 
 impl fmt::Display for InvalidCommand {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", printer::print_err("ERR invalid command"))
+        write!(f, "{}", "ERR invalid command")
     }
 }
 

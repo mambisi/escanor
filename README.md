@@ -8,5 +8,8 @@ install on your system to evaluate and give me feedback.
 
 > Cruel Sun 🔥 
 
-## Progress
+## Commands
 
+```redis
+set [key] [value]
+```
