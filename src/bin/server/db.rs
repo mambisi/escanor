@@ -1,18 +1,17 @@
-extern crate bytes;
-
 use crate::geo::{Circle, GeoPoint2D};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::sync::RwLock;
 use std::mem;
 
-use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd};
+use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd, GeoAddCmd, CmdGeoItem};
 use std::borrow::Borrow;
 
 use lazy_static::lazy_static;
 use bytes::{Bytes, BytesMut};
 use crate::printer::{print_err, print_record, print_str, print_ok, print_string_arr};
 use std::rc::Rc;
+use crate::geo;
 
 lazy_static! {
     static ref BTREE : Arc<RwLock<BTreeMap<String, ESRecord>>> = Arc::new(RwLock::new(BTreeMap::new()));
@@ -24,7 +23,7 @@ lazy_static! {
 #[derive(Clone, Debug)]
 pub enum DataType {
     String,
-    Integer
+    Integer,
 }
 
 #[derive(Clone, Debug)]
@@ -95,7 +94,52 @@ pub fn list_keys(cmd: &KeysCmd) -> String {
     for key in map.keys() {
         keys.push(key)
     }
-
     print_string_arr(keys)
 }
+
+pub fn geo_add(cmd: &GeoAddCmd) -> String {
+    let arc: Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = GEO_BTREE.clone();
+    let mut map = arc.write().unwrap();
+
+
+
+    if map.contains_key(&cmd.arg_key) {
+        //update previous insertion
+        let point_map = map.get_mut(&cmd.arg_key).unwrap();
+
+        cmd.items.iter().for_each(|(lat,lng,tag)| {
+            let tag = tag.to_owned();
+            let lat = lat.to_owned();
+            let lng = lng.to_owned();
+            let point = GeoPoint2D {
+                tag,
+                lat,
+                lng,
+            };
+            point_map.insert(point);
+        });
+
+        return print_ok();
+    }
+
+    let mut point_map: HashSet<GeoPoint2D> = HashSet::new();
+
+    cmd.items.iter().for_each(|(lat,lng,tag)| {
+        let tag = tag.to_owned();
+        let lat = lat.to_owned();
+        let lng = lng.to_owned();
+        let point = GeoPoint2D {
+            tag,
+            lat,
+            lng,
+        };
+        point_map.insert(point);
+    });
+
+
+    map.insert(cmd.arg_key.to_owned(),point_map);
+    info!("Geo BTree len: {}",map.len());
+    print_ok()
+}
+
 

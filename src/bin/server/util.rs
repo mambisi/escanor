@@ -56,12 +56,16 @@ pub fn is_json(json_str: &String) -> bool {
 #[cfg(test)]
 mod tests {
 
+    extern crate bytes;
+
+    use redis_protocol::prelude::*;
+
     use super::*;
 
-    extern crate regex;
     use regex::Regex;
 
     use serde_json::Value;
+    use core::panicking::panic;
 
     pub fn is_numeric_with_regex(num_str: &String) -> bool {
         if num_str.is_empty() {
@@ -93,6 +97,23 @@ mod tests {
         merge(&mut a, &b);
         println!("{:#}", a);
     }
+
+    #[test]
+    fn test_redis_parser (){
+        let buf = "*3\r\n$3\r\nFoo\r\n$-1\r\n$3\r\nBar\r\n".into();
+
+        let (frame, consumed) = match decode_bytes(&buf) {
+            Ok((f, c)) => (f, c),
+            Err(e) => panic!("Error parsing bytes: {:?}", e)
+        };
+
+        if let Some(frame) = frame {
+            println!("{:?}",frame)
+        }else{
+            println!("Incomplete frame, parsed {} bytes", consumed);
+        }
+    }
+
 
     #[test]
     fn test_numeric() {

@@ -12,7 +12,13 @@ pub struct InternalError;
 #[derive(Debug)]
 pub struct InvalidCommand;
 
+#[derive(Debug)]
+pub struct CustomMessageError{
+    pub detail : String
+}
+
 impl fmt::Display for SyntaxError {
+
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", "ERR syntax error")
     }
@@ -52,5 +58,27 @@ impl error::Error for InvalidCommand {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         // Generic error, underlying cause isn't tracked.
         None
+    }
+}
+
+impl fmt::Display for CustomMessageError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.detail)
+    }
+}
+
+// This is important for other errors to wrap this one.
+impl error::Error for CustomMessageError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        // Generic error, underlying cause isn't tracked.
+        None
+    }
+}
+
+impl CustomMessageError {
+    pub fn new(detail : &str) -> CustomMessageError{
+        CustomMessageError {
+            detail : detail.to_owned()
+        }
     }
 }

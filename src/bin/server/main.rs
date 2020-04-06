@@ -9,6 +9,9 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_json;
 
+extern crate redis_protocol;
+extern crate bytes;
+
 //modules
 mod network;
 mod db;

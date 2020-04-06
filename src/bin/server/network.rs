@@ -9,8 +9,8 @@ use std::sync::RwLock;
 
 use lazy_static::lazy_static;
 
-
-use crate::{command, db};
+use crate::command;
+use crate::db;
 use std::fmt::Debug;
 use std::collections::BTreeMap;
 
