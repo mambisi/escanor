@@ -1,36 +1,76 @@
-use rstar::{RTreeObject, AABB};
+use rstar::{RTreeObject, AABB, PointDistance, Point};
 use std::hash::{Hash, Hasher};
+use crate::util;
 
- pub struct Circle
- {
-     pub origin: [f32; 2],
-     pub radius: f32,
- }
+pub type Scalar = f64;
 
- impl RTreeObject for Circle {
-     type Envelope = AABB<[f32; 2]>;
-
-     fn envelope(&self) -> Self::Envelope {
-         let corner_1 = [self.origin[0] - self.radius, self.origin[1] - self.radius];
-         let corner_2 = [self.origin[0] + self.radius, self.origin[1] + self.radius];
-         AABB::from_corners(corner_1, corner_2)
-     }
+#[derive(Clone, Debug)]
+pub struct Circle
+{
+    pub origin: [Scalar; 2],
+    pub radius: Scalar,
 }
 
+impl RTreeObject for Circle {
+    type Envelope = AABB<[Scalar; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        let corner_1 = [self.origin[0] - self.radius, self.origin[1] - self.radius];
+        let corner_2 = [self.origin[0] + self.radius, self.origin[1] + self.radius];
+        AABB::from_corners(corner_1, corner_2)
+    }
+}
+
+impl PointDistance for Circle
+{
+    fn distance_2(&self, point: &[Scalar; 2]) -> f64
+    {
+
+        let distance_to_origin = util::get_distance((self.origin[0], self.origin[1]), (point[0], point[1]));
+        let distance_to_ring = distance_to_origin - self.radius;
+        let distance_to_circle = Scalar::max(0.0, distance_to_ring);
+        // We must return the squared distance!
+        distance_to_circle * distance_to_circle
+    }
+
+    // This implementation is not required but more efficient since it
+    // omits the calculation of a square root
+    fn contains_point(&self, point: &[Scalar; 2]) -> bool
+    {
+        let distance_to_origin_2 = util::get_distance((self.origin[0], self.origin[1]), (point[0], point[1]));
+        let radius_2 = self.radius * self.radius;
+        distance_to_origin_2 <= radius_2
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct GeoPoint2D {
     pub tag: String,
-    pub lat: f64,
-    pub lng: f64,
+    pub x_cord : f64,
+    pub y_cord : f64,
+    pub hash: String,
 }
 
 impl RTreeObject for GeoPoint2D
 {
-    type Envelope = AABB<[f64; 2]>;
+    type Envelope = AABB<[Scalar; 2]>;
 
     fn envelope(&self) -> Self::Envelope
     {
-        AABB::from_point([self.lat, self.lng])
+        AABB::from_point([self.x_cord, self.y_cord])
     }
+
+
+}
+
+impl PointDistance for GeoPoint2D {
+    fn distance_2(&self, point: &[Scalar; 2]) -> Scalar
+    {
+        let distance_to_origin = util::get_distance((self.x_cord, self.y_cord), (point[0], point[1]));
+        distance_to_origin
+    }
+
+
 }
 
 impl PartialEq for GeoPoint2D {

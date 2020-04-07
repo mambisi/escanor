@@ -41,16 +41,27 @@ pub fn print_string_arr(arr : Vec<&String>) -> String {
     let mut str = String::new();
     str += &format!("{}{}{}",ARRAY_PREFIX,arr.len(),CRLF);
     for i in arr {
-        str += &print_string(i)
+        str += &print_string(&i.to_string())
     };
     str
 }
 
-/*
-pub fn print_str_arr(arr : Vec<&str>){
-
-}*/
-
+pub fn print_arr<T : ToString>(arr : Vec<T>) -> String {
+    let mut str = String::new();
+    str += &format!("{}{}{}",ARRAY_PREFIX,arr.len(),CRLF);
+    for i in arr {
+        str += &print_string(&i.to_string())
+    };
+    str
+}
+pub fn print_nested_arr<T : ToString>(arr : Vec<Vec<T>>) -> String {
+    let mut str = String::new();
+    str += &format!("{}{}{}",ARRAY_PREFIX,arr.len(),CRLF);
+    for i in arr {
+        str += &print_arr(i)
+    };
+    str
+}
 pub fn print_string(str: &String) -> String {
     format!("{}{}{}{}{}", STRING_PREFIX, str.len(), CRLF, str, CRLF)
 }
@@ -59,11 +70,9 @@ pub fn print_ok() -> String {
     print_str("OK")
 }
 
-/* @todo implement later
-pub fn print_record_as_u8byte_arr(record : &ESRecord) -> String {
-    format!("{}{}{}",msg,DELIMITER)
+pub fn print_pong() -> String {
+    print_str("PONG")
 }
-*/
 
 #[test]
 fn test_array_print() {

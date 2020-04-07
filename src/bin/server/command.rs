@@ -1,6 +1,6 @@
 extern crate regex;
 
-use crate::db;
+use crate::{db, printer};
 use crate::db::{DataType, ESRecord};
 use crate::error;
 use crate::util;
@@ -31,6 +31,9 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
     let cmd = itr.next().unwrap_or(&empty_string).to_lowercase();
     if cmd.eq("") {
         return Err(error::SyntaxError);
+    }
+    if cmd == "ping" {
+        return Ok(Box::new(PingCmd))
     }
 
     if cmd == "set" {
@@ -74,7 +77,7 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
     } else if cmd == "keys" {
         return Ok(Box::new(KeysCmd));
     }
-    // GEOADD [key] [number number tag] ... n
+    // GEOADD [key] long lat tag [long lat tag...]
     else if cmd == "geoadd" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
@@ -95,8 +98,9 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let mut items: Vec<CmdGeoItem> = vec![];
 
         while let Some(c) = geo_point_chunks.next() {
-            let lat = c[0];
-            let lng = c[1];
+
+            let lng = c[0];
+            let lat = c[1];
             let tag = c[2];
 
             if !(util::is_numeric(lat) && util::is_numeric(lng)) {
@@ -115,6 +119,54 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
             items,
         }));
     }
+    else if cmd == "geohash" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+        let mut items_after_key: Vec<String> = vec![];
+
+        while let Some(i) = itr.next() {
+            items_after_key.push(i.to_owned());
+        }
+
+        if items_after_key.is_empty() {
+            return Err(error::SyntaxError);
+        }
+
+        return Ok(Box::new(GeoHashCmd {
+            arg_key: arg_key.to_owned(),
+            items : items_after_key,
+        }));
+    }
+    else if cmd == "georadius" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_lng = itr.next().unwrap_or(&empty_string);
+        if arg_lng.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_lat = itr.next().unwrap_or(&empty_string);
+        if arg_lat.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_radius = itr.next().unwrap_or(&empty_string);
+        if arg_radius.is_empty() { return Err(error::SyntaxError); }
+
+        if !(util::is_numeric(arg_lng) && util::is_numeric(arg_lng) && util::is_numeric(arg_radius)) {
+            return Err(error::SyntaxError);
+        }
+
+        let lat = arg_lat.parse::<f64>().unwrap();
+        let lng = arg_lng.parse::<f64>().unwrap();
+        let rads = arg_radius.parse::<f64>().unwrap();
+
+        return Ok(Box::new(GeoRadiusCmd{
+            arg_key: arg_key.to_owned(),
+            arg_lng: lng,
+            arg_lat: lat,
+            arg_radius: rads
+        }));
+
+    }
+
     Err(error::SyntaxError)
 }
 
@@ -190,6 +242,14 @@ pub struct GeoAddCmd {
     pub items: Vec<CmdGeoItem>,
 }
 
+#[derive(Debug)]
+pub struct GeoRadiusCmd {
+    pub arg_key: String,
+    pub arg_lng: f64,
+    pub arg_lat: f64,
+    pub arg_radius: f64,
+}
+
 // Grammar > get [key]
 #[derive(Debug)]
 pub struct GetCmd {
@@ -204,6 +264,17 @@ pub struct DelCmd {
 
 #[derive(Debug)]
 pub struct KeysCmd;
+
+
+#[derive(Debug)]
+pub struct PingCmd;
+
+
+#[derive(Debug)]
+pub struct GeoHashCmd {
+    pub arg_key : String,
+    pub items : Vec<String>
+}
 
 
 fn get_type(t: &String) -> db::DataType {
@@ -238,6 +309,25 @@ impl Command for KeysCmd {
 impl Command for GeoAddCmd {
     fn execute(&self) -> String {
         db::geo_add(self)
+    }
+}
+
+impl Command for PingCmd {
+    fn execute(&self) -> String {
+        printer::print_pong()
+    }
+}
+
+
+impl Command for GeoHashCmd {
+    fn execute(&self) -> String {
+        db::geo_hash(self)
+    }
+}
+
+impl Command for GeoRadiusCmd {
+    fn execute(&self) -> String {
+        db::geo_radius(self)
     }
 }
 

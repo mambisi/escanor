@@ -2,6 +2,7 @@
   <dictionary name="mambisiz">
     <words>
       <w>geoadd</w>
+      <w>georadius</w>
     </words>
   </dictionary>
 </component>
