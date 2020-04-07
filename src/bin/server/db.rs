@@ -1,22 +1,19 @@
 use crate::geo::{Circle, GeoPoint2D};
+use crate::unit_conv::*;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::sync::RwLock;
-use rstar::{RTree, RTreeObject};
-use std::mem;
-
-use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd, GeoAddCmd, CmdGeoItem, GeoHashCmd, GeoRadiusCmd};
-use std::borrow::Borrow;
+use rstar::RTree;
+use crate::util;
+use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd, GeoAddCmd, GeoHashCmd, GeoRadiusCmd, ArgOrder, GeoDistCmd};
 
 use lazy_static::lazy_static;
-use bytes::{Bytes, BytesMut};
-use crate::printer::{print_err, print_record, print_str, print_ok, print_string_arr, print_from_error, print_string, print_arr, print_nested_arr};
-use std::rc::Rc;
-use crate::geo;
+use crate::printer::{print_err, print_record, print_ok, print_string_arr, print_nested_arr, print_string};
 use crate::printer;
 use crate::error::CustomMessageError;
 use geohash;
 use geohash::Coordinate;
+use crate::util::Location;
 lazy_static! {
     static ref BTREE : Arc<RwLock<BTreeMap<String, ESRecord>>> = Arc::new(RwLock::new(BTreeMap::new()));
     static ref GEO_BTREE : Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
@@ -188,7 +185,7 @@ pub fn geo_hash(cmd: &GeoHashCmd) -> String {
     let geo_point_hash_set = match map.get(&cmd.arg_key) {
         Some(m) => m,
         None => {
-            return return print_err("KEY_NOT_FOUND");;
+            return print_err("KEY_NOT_FOUND");
         }
     };
 
@@ -212,6 +209,53 @@ pub fn geo_hash(cmd: &GeoHashCmd) -> String {
     print_string_arr(geo_hashes)
 }
 
+pub fn geo_dist(cmd: &GeoDistCmd) -> String {
+    let arc: Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = GEO_BTREE.clone();
+    let map = arc.read().unwrap();
+    //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
+
+
+    let geo_point_hash_set = match map.get(&cmd.arg_key) {
+        Some(m) => m,
+        None => {
+            return print_err("KEY_NOT_FOUND");
+        }
+    };
+    let comp = GeoPoint2D {
+        tag: cmd.arg_mem_1.to_owned(),
+        x_cord: 0.0,
+        y_cord: 0.0,
+        hash: "".to_string(),
+    };
+    let member_1 = match geo_point_hash_set.get(&comp) {
+        Some(t) => {
+            t
+        }
+        None => {
+            return print_err("ERR member 1 not found");
+        }
+    };
+    let comp = GeoPoint2D {
+        tag: cmd.arg_mem_2.to_owned(),
+        x_cord: 0.0,
+        y_cord: 0.0,
+        hash: "".to_string(),
+    };
+    let member_2 = match geo_point_hash_set.get(&comp) {
+        Some(t) => {
+            t
+        }
+        None => {
+            return print_err("ERR member 2 not found");
+        }
+    };
+
+    let distance = util::haversine_distance(Location { latitude: member_1.x_cord, longitude: member_1.y_cord },
+                                            Location { latitude: member_2.x_cord, longitude: member_2.y_cord },
+                                            cmd.arg_unit.clone());
+    print_string(&distance.to_string())
+}
+
 pub fn geo_radius(cmd: &GeoRadiusCmd) -> String {
     let r_arc: Arc<RwLock<BTreeMap<String, RTree<GeoPoint2D>>>> = GEO_RTREE.clone();
     let r_map = r_arc.read().unwrap();
@@ -220,31 +264,47 @@ pub fn geo_radius(cmd: &GeoRadiusCmd) -> String {
     let geo_points_rtree = match r_map.get(&cmd.arg_key) {
         Some(m) => m,
         None => {
-            return return print_err("KEY_NOT_FOUND");;
+            return print_err("KEY_NOT_FOUND");
         }
+    };
+
+    let radius = match cmd.arg_unit {
+        Units::Kilometers => km_m(cmd.arg_radius),
+        Units::Miles => mi_m(cmd.arg_radius),
+        Units::Meters => cmd.arg_radius,
     };
 
     let circle = Circle {
         origin: [cmd.arg_lat, cmd.arg_lng],
-        radius: cmd.arg_radius,
+        radius,
     };
+
     /*
        ["Palermo","190.4424","st0219xsd21"]
     */
 
-    //geo_points_rtree.nearest_neighbor_iter_with_distance(&circle);
-
     let nearest_in_radius_array = &mut geo_points_rtree.nearest_neighbor_iter_with_distance(&circle.origin);
 
-    let mut item_string_arr : Vec<Vec <String> > = vec![];
+    let mut item_string_arr: Vec<Vec<String>> = vec![];
 
     while let Some((point, dist)) = nearest_in_radius_array.next() {
-
         if dist <= circle.radius {
-            let string_arr : Vec<String> = vec![point.tag.to_owned(),point.hash.to_owned(),dist.to_string()];
-            &item_string_arr.push( string_arr);
+            let dist = match cmd.arg_unit {
+                Units::Kilometers => m_km(dist),
+                Units::Miles => m_mi(dist),
+                Units::Meters => dist,
+            };
+
+            let string_arr: Vec<String> = vec![point.tag.to_owned(), point.hash.to_owned(), dist.to_string()];
+            &item_string_arr.push(string_arr);
         }
     }
+    match cmd.arg_order {
+        ArgOrder::UNSPECIFIED => (),
+        ArgOrder::ASC => item_string_arr.sort_by(|a, b| a[2].cmp(&b[2])),
+        ArgOrder::DESC => item_string_arr.sort_by(|a, b| b[2].cmp(&a[2]))
+    };
+
 
     print_nested_arr(item_string_arr)
 }

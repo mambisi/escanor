@@ -1,8 +1,9 @@
-use rstar::{RTreeObject, AABB, PointDistance, Point};
+use rstar::{RTreeObject, AABB, PointDistance};
 use std::hash::{Hash, Hasher};
 use crate::util;
 
 pub type Scalar = f64;
+
 
 #[derive(Clone, Debug)]
 pub struct Circle

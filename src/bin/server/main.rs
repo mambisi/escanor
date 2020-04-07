@@ -20,14 +20,12 @@ mod error;
 mod printer;
 mod util;
 mod geo;
+mod unit_conv;
 
 use clap::{App, Arg};
 
 use console::style;
-use std::sync::{Arc, RwLock};
-use std::collections::BTreeMap;
 use std::env;
-use crate::db::ESRecord;
 
 #[tokio::main]
 async fn main() {
@@ -43,21 +41,15 @@ async fn main() {
         .version(format!("{}", style("0.1.alpha").cyan()).as_str())
         .author("Mambisi Zempare")
         .about("Escanor is key value in memory database with disk store developed by ByteQuery Ltd.")
-        .arg(Arg::with_name("HOST")
-            .short("h")
-            .long("host")
-            .help("sets the tcp host for the server")
-            .default_value("0.0.0.0")
-            .takes_value(true))
         .arg(Arg::with_name("PORT")
             .short("p")
             .long("port")
             .help("sets the tcp port for the server")
-            .default_value("8080")
+            .default_value("6867")
             .takes_value(true))
         .get_matches();
 
-    let host = matches.value_of("HOST").unwrap();
+    let host = "127.0.0.1";
     let port = matches.value_of("PORT").unwrap();
 
     let addrs = &format!("{}:{}", host, port);

@@ -1,17 +1,13 @@
 extern crate regex;
 
-use crate::{db, printer};
-use crate::db::{DataType, ESRecord};
+use crate::{db, printer, unit_conv};
 use crate::error;
 use crate::util;
-use std::rc::Rc;
-use std::sync::Arc;
 use crate::error::SyntaxError;
-use std::borrow::Borrow;
 
 use regex::Regex;
-use std::collections::BTreeMap;
 use serde::export::Option::Some;
+use crate::unit_conv::Units;
 
 
 pub fn parse(cmd: &String) -> Result<Box<dyn Command>, error::SyntaxError> {
@@ -150,6 +146,30 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let arg_radius = itr.next().unwrap_or(&empty_string);
         if arg_radius.is_empty() { return Err(error::SyntaxError); }
 
+        let arg_unit_string = &itr.next().unwrap_or(&empty_string).to_lowercase();
+        if arg_unit_string.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_unit = match unit_conv::parse(arg_unit_string){
+            Ok(unit) => unit,
+            Err(e) => {
+                return Err(error::SyntaxError);
+            }
+        };
+
+        let arg_order_string = itr.next().unwrap_or(&empty_string).to_lowercase();
+        let mut arg_order = ArgOrder::UNSPECIFIED;
+
+        if !arg_order_string.is_empty() && (arg_order_string == "asc" || arg_order_string == "desc" ) {
+            arg_order = match arg_order_string.as_str() {
+                "asc" => ArgOrder::ASC,
+                "desc" => ArgOrder::DESC,
+                _ => {
+                    return Err(error::SyntaxError);
+                }
+            }
+        }
+
+
         if !(util::is_numeric(arg_lng) && util::is_numeric(arg_lng) && util::is_numeric(arg_radius)) {
             return Err(error::SyntaxError);
         }
@@ -162,7 +182,37 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
             arg_key: arg_key.to_owned(),
             arg_lng: lng,
             arg_lat: lat,
-            arg_radius: rads
+            arg_radius: rads,
+            arg_unit,
+            arg_order
+        }));
+
+    }
+    else if cmd == "geodist" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let member_1 = itr.next().unwrap_or(&empty_string);
+        if member_1.is_empty() { return Err(error::SyntaxError); }
+
+        let member_2 = itr.next().unwrap_or(&empty_string);
+        if member_2.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_unit_string = &itr.next().unwrap_or(&empty_string).to_lowercase();
+        if arg_unit_string.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_unit = match unit_conv::parse(arg_unit_string){
+            Ok(unit) => unit,
+            Err(e) => {
+                return Err(error::SyntaxError)
+            }
+        };
+
+        return Ok(Box::new(GeoDistCmd {
+            arg_key: arg_key.to_owned(),
+            arg_mem_1: member_1.to_owned(),
+            arg_mem_2: member_2.to_owned(),
+            arg_unit
         }));
 
     }
@@ -241,13 +291,26 @@ pub struct GeoAddCmd {
     pub arg_key: String,
     pub items: Vec<CmdGeoItem>,
 }
-
+#[derive(Debug)]
+pub enum ArgOrder {
+    ASC,DESC,UNSPECIFIED
+}
 #[derive(Debug)]
 pub struct GeoRadiusCmd {
     pub arg_key: String,
     pub arg_lng: f64,
     pub arg_lat: f64,
     pub arg_radius: f64,
+    pub arg_unit : Units,
+    pub arg_order : ArgOrder
+}
+
+#[derive(Debug)]
+pub struct GeoDistCmd {
+    pub arg_key: String,
+    pub arg_mem_1: String,
+    pub arg_mem_2: String,
+    pub arg_unit : Units
 }
 
 // Grammar > get [key]
@@ -330,6 +393,13 @@ impl Command for GeoRadiusCmd {
         db::geo_radius(self)
     }
 }
+
+impl Command for GeoDistCmd {
+    fn execute(&self) -> String {
+        db::geo_dist(self)
+    }
+}
+
 
 #[test]
 fn set_command_test_valid_with_expiration() {

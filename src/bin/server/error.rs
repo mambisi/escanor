@@ -1,7 +1,5 @@
 use std::error;
 use std::fmt;
-use std::option;
-use crate::printer;
 
 #[derive(Debug)]
 pub struct SyntaxError;

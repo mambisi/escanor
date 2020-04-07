@@ -9,7 +9,6 @@ const POINT_PREFIX: &str = "!";
 use std::error;
 
 use crate::db::{ESRecord, DataType};
-use serde::de::Unexpected::Str;
 
 
 pub fn print_err(msg: &str) -> String {

@@ -1,4 +1,5 @@
 use serde_json::Value;
+use crate::unit_conv::Units;
 
 pub fn merge(a: &mut Value, b: &Value) {
     match (a, b) {
@@ -56,7 +57,7 @@ pub fn get_distance( a : (f64, f64), b : ( f64, f64)) -> f64 {
     let loc_a = Location{latitude: a.0,longitude: a.1};
     let loc_b = Location{latitude: b.0, longitude: b.1};
 
-    haversine_distance(loc_a,loc_b,Units::Kilometers)
+    haversine_distance(loc_a,loc_b,Units::Meters)
 
 }
 pub struct Location {
@@ -64,19 +65,17 @@ pub struct Location {
     pub longitude:f64
 }
 
-pub enum Units {
-    Miles,
-    Kilometers
-}
 
 pub fn haversine_distance(start:Location, end:Location, units: Units) -> f64 {
     let kilometers: f64 = 6371.0;
     let miles: f64 = 3960.0;
+    let meters : f64 = 6_371_000.000000;
     let mut r: f64 = 0.0;
 
     match units {
         Units::Miles => r = miles,
-        Units::Kilometers => r = kilometers
+        Units::Kilometers => r = kilometers,
+        Units::Meters => r = meters
     }
 
     let d_lat: f64 = (end.latitude - start.latitude).to_radians();
@@ -102,8 +101,6 @@ mod tests {
 
     use regex::Regex;
 
-    use serde_json::Value;
-    use core::panicking::panic;
 
     pub fn is_numeric_with_regex(num_str: &String) -> bool {
         if num_str.is_empty() {
@@ -129,7 +126,7 @@ mod tests {
         "person" : {
             "firstName" : "Jane"
         },
-        "cities":[ "colombo" ]
+        "cities": null
     });
 
         merge(&mut a, &b);

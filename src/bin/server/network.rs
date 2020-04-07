@@ -4,10 +4,6 @@ extern crate tokio;
 
 use tokio::net::TcpListener;
 use tokio::prelude::*;
-use std::sync::Arc;
-use std::sync::RwLock;
-
-use lazy_static::lazy_static;
 
 use crate::command;
 use crate::db;
