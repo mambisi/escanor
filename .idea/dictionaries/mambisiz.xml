@@ -3,7 +3,9 @@
     <words>
       <w>geoadd</w>
       <w>geodist</w>
+      <w>geodistbymember</w>
       <w>georadius</w>
+      <w>georadiusbymember</w>
     </words>
   </dictionary>
 </component>

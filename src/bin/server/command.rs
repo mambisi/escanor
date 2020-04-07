@@ -29,7 +29,7 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         return Err(error::SyntaxError);
     }
     if cmd == "ping" {
-        return Ok(Box::new(PingCmd))
+        return Ok(Box::new(PingCmd));
     }
 
     if cmd == "set" {
@@ -94,7 +94,6 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let mut items: Vec<CmdGeoItem> = vec![];
 
         while let Some(c) = geo_point_chunks.next() {
-
             let lng = c[0];
             let lat = c[1];
             let tag = c[2];
@@ -114,8 +113,7 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
             arg_key: arg_key.to_owned(),
             items,
         }));
-    }
-    else if cmd == "geohash" {
+    } else if cmd == "geohash" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
         let mut items_after_key: Vec<String> = vec![];
@@ -130,10 +128,9 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
 
         return Ok(Box::new(GeoHashCmd {
             arg_key: arg_key.to_owned(),
-            items : items_after_key,
+            items: items_after_key,
         }));
-    }
-    else if cmd == "georadius" {
+    } else if cmd == "georadius" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
 
@@ -149,7 +146,7 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let arg_unit_string = &itr.next().unwrap_or(&empty_string).to_lowercase();
         if arg_unit_string.is_empty() { return Err(error::SyntaxError); }
 
-        let arg_unit = match unit_conv::parse(arg_unit_string){
+        let arg_unit = match unit_conv::parse(arg_unit_string) {
             Ok(unit) => unit,
             Err(e) => {
                 return Err(error::SyntaxError);
@@ -159,16 +156,12 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let arg_order_string = itr.next().unwrap_or(&empty_string).to_lowercase();
         let mut arg_order = ArgOrder::UNSPECIFIED;
 
-        if !arg_order_string.is_empty() && (arg_order_string == "asc" || arg_order_string == "desc" ) {
-            arg_order = match arg_order_string.as_str() {
-                "asc" => ArgOrder::ASC,
-                "desc" => ArgOrder::DESC,
-                _ => {
-                    return Err(error::SyntaxError);
-                }
+        match check_validate_arg_order(arg_order_string, &mut arg_order) {
+            Ok(()) => (),
+            Err(e) => {
+                return Err(e);
             }
-        }
-
+        };
 
         if !(util::is_numeric(arg_lng) && util::is_numeric(arg_lng) && util::is_numeric(arg_radius)) {
             return Err(error::SyntaxError);
@@ -178,17 +171,15 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let lng = arg_lng.parse::<f64>().unwrap();
         let rads = arg_radius.parse::<f64>().unwrap();
 
-        return Ok(Box::new(GeoRadiusCmd{
+        return Ok(Box::new(GeoRadiusCmd {
             arg_key: arg_key.to_owned(),
             arg_lng: lng,
             arg_lat: lat,
             arg_radius: rads,
             arg_unit,
-            arg_order
+            arg_order,
         }));
-
-    }
-    else if cmd == "geodist" {
+    } else if cmd == "geodist" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
 
@@ -201,10 +192,10 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
         let arg_unit_string = &itr.next().unwrap_or(&empty_string).to_lowercase();
         if arg_unit_string.is_empty() { return Err(error::SyntaxError); }
 
-        let arg_unit = match unit_conv::parse(arg_unit_string){
+        let arg_unit = match unit_conv::parse(arg_unit_string) {
             Ok(unit) => unit,
             Err(e) => {
-                return Err(error::SyntaxError)
+                return Err(error::SyntaxError);
             }
         };
 
@@ -212,11 +203,72 @@ fn analyse_syntax(tokens: Vec<String>) -> Result<Box<dyn Command>, error::Syntax
             arg_key: arg_key.to_owned(),
             arg_mem_1: member_1.to_owned(),
             arg_mem_2: member_2.to_owned(),
-            arg_unit
+            arg_unit,
         }));
+    } else if cmd == "georadiusbymember" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_member = itr.next().unwrap_or(&empty_string);
+        if arg_member.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_radius = itr.next().unwrap_or(&empty_string);
+        if arg_radius.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_unit_string = &itr.next().unwrap_or(&empty_string).to_lowercase();
+        if arg_unit_string.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_unit = match unit_conv::parse(arg_unit_string) {
+            Ok(unit) => unit,
+            Err(e) => {
+                return Err(error::SyntaxError);
+            }
+        };
+
+        let arg_order_string = itr.next().unwrap_or(&empty_string).to_lowercase();
+        let mut arg_order = ArgOrder::UNSPECIFIED;
+
+        match check_validate_arg_order(arg_order_string, &mut arg_order) {
+            Ok(()) => (),
+            Err(e) => {
+                return Err(e);
+            }
+        };
+
+        if !(util::is_numeric(arg_radius)) {
+            return Err(error::SyntaxError);
+        }
+        let rads = arg_radius.parse::<f64>().unwrap();
+
+        return Ok(Box::new(
+            GeoRadiusByMemberCmd{
+                arg_key: arg_key.to_owned(),
+                member: arg_member.to_string(),
+                arg_radius: rads,
+                arg_unit,
+                arg_order
+            }
+        ))
+
 
     }
 
+    Err(error::SyntaxError)
+}
+
+fn check_validate_arg_order(arg_order_string: String, arg_order: &mut ArgOrder) -> Result<(), error::SyntaxError> {
+    if arg_order_string.is_empty() {
+        return Ok(());
+    } else if !arg_order_string.is_empty() && (arg_order_string == "asc" || arg_order_string == "desc") {
+        *arg_order = match arg_order_string.as_str() {
+            "asc" => ArgOrder::ASC,
+            "desc" => ArgOrder::DESC,
+            _ => {
+                return Err(error::SyntaxError);
+            }
+        };
+        return Ok(());
+    }
     Err(error::SyntaxError)
 }
 
@@ -270,6 +322,7 @@ fn tokenize(cmd: &str) -> Vec<String> {
     return tokens;
 }
 
+
 pub trait Command {
     //fn execute(&self, db: &db::DB);
     fn execute(&self) -> String;
@@ -291,18 +344,22 @@ pub struct GeoAddCmd {
     pub arg_key: String,
     pub items: Vec<CmdGeoItem>,
 }
-#[derive(Debug)]
+
+#[derive(Debug, Clone, Copy)]
 pub enum ArgOrder {
-    ASC,DESC,UNSPECIFIED
+    ASC,
+    DESC,
+    UNSPECIFIED,
 }
+
 #[derive(Debug)]
 pub struct GeoRadiusCmd {
     pub arg_key: String,
     pub arg_lng: f64,
     pub arg_lat: f64,
     pub arg_radius: f64,
-    pub arg_unit : Units,
-    pub arg_order : ArgOrder
+    pub arg_unit: Units,
+    pub arg_order: ArgOrder,
 }
 
 #[derive(Debug)]
@@ -310,7 +367,7 @@ pub struct GeoDistCmd {
     pub arg_key: String,
     pub arg_mem_1: String,
     pub arg_mem_2: String,
-    pub arg_unit : Units
+    pub arg_unit: Units,
 }
 
 // Grammar > get [key]
@@ -335,8 +392,17 @@ pub struct PingCmd;
 
 #[derive(Debug)]
 pub struct GeoHashCmd {
-    pub arg_key : String,
-    pub items : Vec<String>
+    pub arg_key: String,
+    pub items: Vec<String>,
+}
+
+#[derive(Debug)]
+pub struct GeoRadiusByMemberCmd {
+    pub arg_key: String,
+    pub member: String,
+    pub arg_radius: f64,
+    pub arg_unit: Units,
+    pub arg_order: ArgOrder,
 }
 
 
@@ -344,6 +410,11 @@ fn get_type(t: &String) -> db::DataType {
     if util::is_integer(t) { db::DataType::Integer } else { db::DataType::String }
 }
 
+impl Command for PingCmd {
+    fn execute(&self) -> String {
+        printer::print_pong()
+    }
+}
 
 impl Command for SetCmd {
     fn execute(&self) -> String {
@@ -375,13 +446,6 @@ impl Command for GeoAddCmd {
     }
 }
 
-impl Command for PingCmd {
-    fn execute(&self) -> String {
-        printer::print_pong()
-    }
-}
-
-
 impl Command for GeoHashCmd {
     fn execute(&self) -> String {
         db::geo_hash(self)
@@ -400,41 +464,8 @@ impl Command for GeoDistCmd {
     }
 }
 
-
-#[test]
-fn set_command_test_valid_with_expiration() {
-    let ucmd = String::from(r##"`set` `name` `{"name" : "json"}`"##);
-    match parse(&ucmd) {
-        Ok(c) => {
-            c.execute();
-            assert!(true)
-        }
-        Err(e) => assert!(false, e.to_string())
-    };
-}
-
-#[test]
-fn set_command_geoadd() {
-    let ucmd = String::from(r##"GEOADD stores 1 23.1 kumasi"##);
-    match parse(&ucmd) {
-        Ok(c) => {
-
-            c.execute();
-            assert!(true)
-        }
-        Err(e) => assert!(false, e.to_string())
-    };
-}
-
-#[test]
-fn set_command_geoadd_error() {
-    let ucmd = String::from(r##"GEOADD stores k m m"##);
-    match parse(&ucmd) {
-        Ok(c) => {
-
-            c.execute();
-            assert!(false)
-        }
-        Err(e) => assert!(true, e.to_string())
-    };
+impl Command for GeoRadiusByMemberCmd {
+    fn execute(&self) -> String {
+        db::geo_radius_by_member(self)
+    }
 }

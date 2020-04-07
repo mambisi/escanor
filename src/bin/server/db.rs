@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::RwLock;
 use rstar::RTree;
 use crate::util;
-use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd, GeoAddCmd, GeoHashCmd, GeoRadiusCmd, ArgOrder, GeoDistCmd};
+use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd, GeoAddCmd, GeoHashCmd, GeoRadiusCmd, ArgOrder, GeoDistCmd, GeoRadiusByMemberCmd};
 
 use lazy_static::lazy_static;
 use crate::printer::{print_err, print_record, print_ok, print_string_arr, print_nested_arr, print_string};
@@ -307,6 +307,46 @@ pub fn geo_radius(cmd: &GeoRadiusCmd) -> String {
 
 
     print_nested_arr(item_string_arr)
+}
+
+pub fn geo_radius_by_member(cmd: &GeoRadiusByMemberCmd) -> String {
+    let arc: Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = GEO_BTREE.clone();
+    let map = arc.read().unwrap();
+    //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
+
+
+    let geo_point_hash_set = match map.get(&cmd.arg_key) {
+        Some(m) => m,
+        None => {
+            return print_err("KEY_NOT_FOUND");
+        }
+    };
+
+    let comp = GeoPoint2D {
+        tag: cmd.member.to_owned(),
+        x_cord: 0.0,
+        y_cord: 0.0,
+        hash: "".to_string(),
+    };
+    let member = match geo_point_hash_set.get(&comp) {
+        Some(t) => {
+            t
+        }
+        None => {
+            return print_err("ERR member 1 not found");
+        }
+    };
+
+    let cmd = GeoRadiusCmd {
+        arg_key: cmd.arg_key.to_owned(),
+        arg_lng: member.y_cord,
+        arg_lat: member.x_cord,
+        arg_radius: cmd.arg_radius,
+        arg_unit: cmd.arg_unit,
+        arg_order: cmd.arg_order
+    };
+
+    geo_radius(&cmd)
 }
 
 
