@@ -21,6 +21,8 @@ mod printer;
 mod util;
 mod geo;
 mod unit_conv;
+mod tokenizer;
+mod syntax_analyzer;
 
 use clap::{App, Arg};
 

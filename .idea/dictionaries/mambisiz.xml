@@ -2,10 +2,14 @@
   <dictionary name="mambisiz">
     <words>
       <w>geoadd</w>
+      <w>geodel</w>
       <w>geodist</w>
       <w>geodistbymember</w>
+      <w>geopos</w>
       <w>georadius</w>
       <w>georadiusbymember</w>
+      <w>georem</w>
+      <w>georemove</w>
     </words>
   </dictionary>
 </component>

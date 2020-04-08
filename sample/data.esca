@@ -1,0 +1,8 @@
+GEOADD stores -1.596427 5.506981 kumasi-store1 -1.588801 5.482034 kumasi-store2
+GEOADD stores -1.372422 5.194894 tema
+GEOADD stores -3.416478 22.213339 mali
+GEORADIUS stores -1.378325 5.178824 10 km
+GEORADIUS stores -1.596427 5.506981 1
+
+
+GEODIST stores kumasi-store1 kumasi-store2 km
