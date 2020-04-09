@@ -62,31 +62,3 @@ pub async fn start_up(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 }
-use std::net::TcpListener as TcpL;
-use std::thread::spawn;
-use tungstenite::server::accept;
-use tungstenite::Message;
-
-pub fn start_up_ws(addr : &str) {
-    let server = TcpL::bind(addr).unwrap();
-    for stream in server.incoming() {
-        spawn (move || {
-            let mut websocket = accept(stream.unwrap()).unwrap();
-            loop {
-                let msg = websocket.read_message().unwrap();
-
-                let message: String = match command::parse(&msg.into_data()) {
-                    Ok(cmd) => {
-                        let res = cmd.execute().to_owned();
-                        res
-                    }
-                    Err(e) => {
-                        print_from_error(&e)
-                    }
-                };
-
-                websocket.write_message(Message::Text(message));
-            }
-        });
-    }
-}

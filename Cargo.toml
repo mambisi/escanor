@@ -25,6 +25,7 @@ bytes = "0.4"
 cookie-factory = "0.3.1"
 tungstenite = "0.10.1"
 evmap = "9.0.0"
+
 [dev-dependencies]
 env_logger = "0.7.1"
 criterion = "0.3"
