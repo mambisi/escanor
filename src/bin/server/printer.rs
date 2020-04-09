@@ -77,6 +77,10 @@ pub fn print_string(str: &String) -> String {
     format!("{}{}{}{}{}", STRING_PREFIX, str.len(), CRLF, str, CRLF)
 }
 
+pub fn print_integer(int: i64) -> String {
+    format!("{}{}{}", INT_PREFIX,int, CRLF)
+}
+
 pub fn print_ok() -> String {
     print_str("OK")
 }
@@ -84,6 +88,7 @@ pub fn print_ok() -> String {
 pub fn print_pong() -> String {
     print_str("PONG")
 }
+
 
 pub fn build_geo_json<T: GeoJsonFeature>(f: &Vec<T>) -> Value {
     let mut features: Vec<Value> = f.iter().map(|m| {

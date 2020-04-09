@@ -9,9 +9,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_json;
 
-extern crate redis_protocol;
-extern crate bytes;
-
 //modules
 mod network;
 mod db;
@@ -47,7 +44,7 @@ async fn main() {
             .short("p")
             .long("port")
             .help("sets the tcp port for the server")
-            .default_value("6867")
+            .default_value("6379")
             .takes_value(true))
         .get_matches();
 
@@ -61,4 +58,6 @@ async fn main() {
     env_logger::init();
 
     network::start_up(addrs).await;
+
+    //network::start_up_ws(addrs)
 }

@@ -1,5 +1,6 @@
 use crate::command::*;
 use crate::{error, util, unit_conv, db};
+use tokio::macros::support::Pin;
 
 pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, error::SyntaxError> {
     let empty_string: String = String::from("");
@@ -54,7 +55,28 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
             arg_key: arg_key.to_owned()
         }));
     } else if cmd == "keys" {
-        return Ok(Box::new(KeysCmd));
+        let arg_pattern = itr.next().unwrap_or(&empty_string);
+        if arg_pattern.is_empty() { return Err(error::SyntaxError); }
+        return Ok(Box::new(KeysCmd{
+            pattern: arg_pattern.to_owned()
+        }));
+    }
+    else if cmd == "exists" {
+        let mut keys: Vec<String> = vec![];
+
+        while let Some(i) = itr.next() {
+            keys.push(i.to_owned());
+        }
+        if keys.is_empty() {
+            return Err(error::SyntaxError);
+        }
+
+        return Ok(Box::new(ExistsCmd{
+            keys
+        }));
+    }
+    else if cmd == "info" {
+        return Ok(Box::new(InfoCmd));
     }
     // GEOADD [key] long lat tag [long lat tag...]
     else if cmd == "geoadd" {

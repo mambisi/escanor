@@ -9,11 +9,40 @@ use crate::syntax_analyzer;
 use regex::Regex;
 use serde::export::Option::Some;
 use crate::unit_conv::Units;
+use nom::character::complete::char;
 
+pub fn parse(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
+    let empty_string = String::new();
+    let first_char = buf[0] as char;
+    return match first_char {
+        '*' | '$' | '+' => {
+            parse_resp(buf)
+        }
+        _ => {
+            parse_cli(buf)
+        }
+    };
 
-pub fn parse(cmd: &String) -> Result<Box<dyn Command>, error::SyntaxError> {
-    //todo add redis command parser
-    let tokens: Vec<String> = tokenizer::generate_tokens(cmd);
+    Err(error::SyntaxError)
+}
+
+pub fn parse_cli(cmd: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
+    let end_chars = &cmd[(cmd.len() - 2)..];
+    let last_2_strings = String::from_utf8(end_chars.to_vec()).unwrap_or("".to_string());
+    let tokens: Vec<String> = if last_2_strings == "\r\n" {
+        tokenizer::generate_tokens(&cmd[..cmd.len() - 2])
+    } else {
+        tokenizer::generate_tokens(cmd)
+    };
+
+    match syntax_analyzer::analyse_token_stream(tokens) {
+        Ok(t) => Ok(t),
+        Err(e) => Err(SyntaxError)
+    }
+}
+
+pub fn parse_resp(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
+    let tokens: Vec<String> = tokenizer::generate_tokens_from_resp(buf);
     match syntax_analyzer::analyse_token_stream(tokens) {
         Ok(t) => Ok(t),
         Err(e) => Err(SyntaxError)
@@ -108,6 +137,12 @@ pub struct GeoJsonCmd {
     pub items: Vec<String>,
 }
 
+#[derive(Debug)]
+pub struct ColCreateCmd {
+    pub arg_key: String,
+    pub items: Vec<String>,
+}
+
 // Grammar > get [key]
 #[derive(Debug)]
 pub struct GetCmd {
@@ -121,7 +156,18 @@ pub struct DelCmd {
 }
 
 #[derive(Debug)]
-pub struct KeysCmd;
+pub struct KeysCmd {
+    pub pattern: String
+}
+
+#[derive(Debug)]
+pub struct ExistsCmd {
+    pub keys: Vec<String>,
+}
+
+
+#[derive(Debug)]
+pub struct InfoCmd;
 
 
 #[derive(Debug)]
@@ -153,7 +199,19 @@ impl Command for DelCmd {
 
 impl Command for KeysCmd {
     fn execute(&self) -> String {
-        db::list_keys(self)
+        db::keys(self)
+    }
+}
+
+impl Command for ExistsCmd {
+    fn execute(&self) -> String {
+        db::exists(self)
+    }
+}
+
+impl Command for InfoCmd {
+    fn execute(&self) -> String {
+        db::info(self)
     }
 }
 
