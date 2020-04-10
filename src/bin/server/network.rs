@@ -18,7 +18,6 @@ use std::sync::Arc;
 const MB: usize = 1_048_576;
 
 pub async fn start_up(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
-
     let mut listener = TcpListener::bind(addr).await?;
 
     println!("{} started tcp server on {}", style("Escanor").red(), addr);
@@ -30,10 +29,10 @@ pub async fn start_up(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
         //let thread_pool = Builder::new().max_threads(1).build();
         counter = counter + 1;
 
-        print!("Socket Connections {}",counter);
+        println!("Socket Connections {}", counter);
 
         tokio::spawn(async move {
-            let mut buf = vec![0; 3000].into_boxed_slice();
+            let mut buf = vec![0; 10 * MB].into_boxed_slice();
             // In a loop, read data from the socket and write the data back.
             loop {
                 let n = match socket.read(&mut buf).await {
