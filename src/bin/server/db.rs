@@ -1,14 +1,13 @@
 use crate::geo::{Circle, GeoPoint2D};
 use crate::unit_conv::*;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, HashMap};
 use std::sync::{Arc, Mutex, RwLockReadGuard, RwLockWriteGuard};
 use std::sync::RwLock;
 use rstar::RTree;
 use crate::util;
 use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd, GeoAddCmd, GeoHashCmd, GeoRadiusCmd, ArgOrder, GeoDistCmd, GeoRadiusByMemberCmd, GeoPosCmd, GeoDelCmd, GeoRemoveCmd, GeoJsonCmd, ExistsCmd, InfoCmd};
 use lazy_static::lazy_static;
-use crate::printer::{print_err, print_record, print_ok, print_string_arr, print_nested_arr, print_string, print_from_error, JsonPrint, build_geo_json, print_integer};
-use crate::printer;
+use crate::printer::*;
 use crate::error::CustomMessageError;
 use geohash;
 use geohash::Coordinate;
@@ -16,31 +15,147 @@ use crate::util::Location;
 use serde::{Serialize, Deserialize};
 use log::Level::{Info, Debug};
 use glob::Pattern;
+
+extern crate chrono;
+
+use tokio::time;
+use std::time::{Duration, SystemTime};
+use chrono::{Date, Utc};
+
 lazy_static! {
+    //Load balancing
+    static ref SAVE_IN_PROCEES : Arc<Mutex<u8>> = Arc::new(Mutex::new(0));
+    static ref KEYS_REM_EX_HASH : Arc<RwLock<HashMap<String, i64>>> = Arc::new(RwLock::new(HashMap::new()));
+    static ref DELETED_KEYS_LIST : Arc<RwLock<HashSet<String>>> = Arc::new(RwLock::new(HashSet::new()));
+    //Data
     static ref BTREE : Arc<RwLock<BTreeMap<String, ESRecord>>> = Arc::new(RwLock::new(BTreeMap::new()));
     static ref GEO_BTREE : Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
     static ref GEO_RTREE : Arc<RwLock<BTreeMap<String, RTree<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
+    //Time keepers
+    static ref LAST_LOAD_TIME : Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
+    static ref LAST_LOAD_DURATION : Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
+    static ref LAST_SAVE_TIME : Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
+    static ref LAST_SAVE_DURATION : Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
+    static ref MUTATION_COUNT_SINCE_SAVE : Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Database {
+    btree: BTreeMap<String, ESRecord>,
+    geo_tree: BTreeMap<String, HashSet<GeoPoint2D>>,
+}
+
+pub fn init_db() {
+    lazy_static::initialize(&BTREE);
+    lazy_static::initialize(&GEO_BTREE);
+    lazy_static::initialize(&GEO_RTREE);
+    lazy_static::initialize(&KEYS_REM_EX_HASH);
+    lazy_static::initialize(&DELETED_KEYS_LIST);
+
+    tokio::spawn(async {
+        let mut interval = time::interval(Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+            remove_expired_keys();
+            let current_ts = Utc::now().timestamp();
+            let map: RwLockReadGuard<HashMap<String, i64>> = KEYS_REM_EX_HASH.read().unwrap();
+            if map.is_empty() {
+                continue;
+            }
+            for (key, exp_time) in map.iter() {
+                if exp_time.to_owned() <= current_ts {
+                    let del_cmd = DelCmd {
+                        arg_key: key.to_owned()
+                    };
+                    debug!("Remove Key -> {}", key);
+                    del(&del_cmd);
+                }
+            }
+        };
+    });
+
+
+    tokio::spawn(async {
+        let mut interval = time::interval(Duration::from_secs(2));
+        loop {
+            interval.tick().await;
+            let current_ts = Utc::now().timestamp();
+
+            let mut map: RwLockWriteGuard<HashSet<String>> = DELETED_KEYS_LIST.write().unwrap();
+            map.clear()
+        };
+    });
+
+    /*
+    tokio::spawn(async {
+        let mut interval = time::interval(Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            let current_ts = Utc::now().timestamp();
+            info!("Saving Database");
+            save_db()
+        };
+    });*/
+}
+
+use rmp_serde;
+use rmp_serde::encode::Error;
+
+
+//async fn load_db() {}
+
+fn save_db() {
+    let btree: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
+    let mut btree_copy = BTreeMap::<String, ESRecord>::new();
+
+    let geo_btree: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let mut geo_btree_copy = BTreeMap::<String, HashSet<GeoPoint2D>>::new();
+
+    btree_copy.clone_from(&btree);
+    geo_btree_copy.clone_from(&geo_btree);
+
+    let db = Database {
+        btree: btree_copy,
+        geo_tree: geo_btree_copy,
+    };
+
+    let binary_vec = match rmp_serde::encode::to_vec(&db) {
+        Ok(b) => { b }
+        Err(e) => {
+            info!("Error saving: {}", e);
+            vec![]
+        }
+    };
+
+    println!("total bytes: {}", binary_vec.len());
+}
+
+fn remove_expired_keys() {
+    let map: RwLockReadGuard<HashSet<String>> = DELETED_KEYS_LIST.read().unwrap();
+    let mut k_map: RwLockWriteGuard<HashMap<String, i64>> = KEYS_REM_EX_HASH.write().unwrap();
+    map.iter().for_each(|key| {
+        k_map.remove(key);
+    });
 }
 
 
-
-#[derive(Clone, Debug,Serialize,Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DataType {
     String,
     Integer,
 }
 
-#[derive(Clone, Debug,Serialize,Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ESRecord {
     pub key: String,
     pub value: String,
     pub data_type: DataType,
 }
 
-
 pub fn set(cmd: &SetCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
-    let mut map :RwLockWriteGuard<BTreeMap<String,ESRecord>> = BTREE.write().unwrap();
+    let mut map: RwLockWriteGuard<BTreeMap<String, ESRecord>> = BTREE.write().unwrap();
+
 
     let record = &ESRecord {
         key: cmd.arg_key.to_owned(),
@@ -48,15 +163,20 @@ pub fn set(cmd: &SetCmd) -> String {
         data_type: cmd.arg_type.to_owned(),
     };
 
+    if cmd.arg_exp > 0 {
+        let timestamp = Utc::now().timestamp();
+        let mut rem_map: RwLockWriteGuard<HashMap<String, i64>> = KEYS_REM_EX_HASH.write().unwrap();
+        rem_map.insert(cmd.arg_key.to_owned(), (cmd.arg_exp.to_owned() as i64 + timestamp));
+    }
+
     map.insert(record.key.to_owned(), record.to_owned());
 
     print_ok()
 }
 
 pub fn get(cmd: &GetCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,ESRecord>> = BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
     let key = &cmd.arg_key.to_owned();
-
 
 
     return match map.get(key) {
@@ -70,9 +190,9 @@ pub fn get(cmd: &GetCmd) -> String {
 }
 
 pub fn exists(cmd: &ExistsCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,ESRecord>> = BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
 
-    let mut found_count : i64 = 0;
+    let mut found_count: i64 = 0;
 
     for key in &cmd.keys {
         if map.contains_key(key) {
@@ -84,17 +204,19 @@ pub fn exists(cmd: &ExistsCmd) -> String {
 }
 
 pub fn info(cmd: &InfoCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,ESRecord>> = BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
     let key_count = map.keys().count();
-    let info = format!("db0:keys={}\r\n",key_count);
+    let info = format!("db0:keys={}\r\n", key_count);
     print_string(&info)
 }
 
 pub fn del(cmd: &DelCmd) -> String {
-    let mut map :RwLockWriteGuard<BTreeMap<String,ESRecord>> = BTREE.write().unwrap();
+    let mut map: RwLockWriteGuard<BTreeMap<String, ESRecord>> = BTREE.write().unwrap();
     let key = &cmd.arg_key.to_owned();
     return match map.remove(key) {
         Some(r) => {
+            let mut map: RwLockWriteGuard<HashSet<String>> = DELETED_KEYS_LIST.write().unwrap();
+            map.insert(key.to_owned());
             print_ok()
         }
         None => {
@@ -104,18 +226,18 @@ pub fn del(cmd: &DelCmd) -> String {
 }
 
 pub fn keys(cmd: &KeysCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,ESRecord>> = BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
     let pattern_marcher = match Pattern::new(&cmd.pattern) {
-        Ok(t)  => t,
+        Ok(t) => t,
         Err(e) => {
-            return print_err("ERR invalid pattern")
+            return print_err("ERR invalid pattern");
         }
     };
 
     let mut keys: Vec<&String> = vec![];
 
-    for key in map.keys(){
-        if  pattern_marcher.matches(key) {
+    for key in map.keys() {
+        if pattern_marcher.matches(key) {
             keys.push(key)
         }
     }
@@ -123,9 +245,9 @@ pub fn keys(cmd: &KeysCmd) -> String {
 }
 
 pub fn geo_add(cmd: &GeoAddCmd) -> String {
-    let mut r_map :RwLockWriteGuard<BTreeMap<String,RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
+    let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
 
-    let mut map :RwLockWriteGuard<BTreeMap<String,HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
+    let mut map: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
 
 
     let mut point_map: HashSet<GeoPoint2D> = HashSet::new();
@@ -169,7 +291,7 @@ pub fn geo_add(cmd: &GeoAddCmd) -> String {
     if !is_valid_geo_point {
         let mut msg = String::from("ERR ");
         msg += &invalid_geo_point_msg;
-        return printer::print_err(&msg);
+        return print_err(&msg);
     }
 
 
@@ -186,7 +308,7 @@ pub fn geo_add(cmd: &GeoAddCmd) -> String {
 }
 
 pub fn geo_hash(cmd: &GeoHashCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
     let empty_string = String::new();
 
@@ -220,7 +342,7 @@ pub fn geo_hash(cmd: &GeoHashCmd) -> String {
 }
 
 pub fn geo_dist(cmd: &GeoDistCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
 
 
@@ -266,7 +388,7 @@ pub fn geo_dist(cmd: &GeoDistCmd) -> String {
 }
 
 pub fn geo_radius(cmd: &GeoRadiusCmd) -> String {
-    let r_map :RwLockReadGuard<BTreeMap<String,RTree<GeoPoint2D>>> = GEO_RTREE.read().unwrap();
+    let r_map: RwLockReadGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.read().unwrap();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
 
     let geo_points_rtree = match r_map.get(&cmd.arg_key) {
@@ -318,7 +440,7 @@ pub fn geo_radius(cmd: &GeoRadiusCmd) -> String {
 }
 
 pub fn geo_radius_by_member(cmd: &GeoRadiusByMemberCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
 
 
@@ -358,7 +480,7 @@ pub fn geo_radius_by_member(cmd: &GeoRadiusByMemberCmd) -> String {
 
 
 pub fn geo_pos(cmd: &GeoPosCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
 
 
@@ -393,8 +515,8 @@ pub fn geo_pos(cmd: &GeoPosCmd) -> String {
 }
 
 pub fn geo_del(cmd: &GeoDelCmd) -> String {
-    let mut r_map :RwLockWriteGuard<BTreeMap<String,RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
-    let mut map :RwLockWriteGuard<BTreeMap<String,HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
+    let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
+    let mut map: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
 
     if !(r_map.contains_key(&cmd.arg_key) && map.contains_key(&cmd.arg_key)) {
         return print_err("KEY_NOT_FOUND");
@@ -406,9 +528,9 @@ pub fn geo_del(cmd: &GeoDelCmd) -> String {
 }
 
 pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
-    let mut r_map :RwLockWriteGuard<BTreeMap<String,RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
+    let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
 
-    let mut map :RwLockWriteGuard<BTreeMap<String,HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
+    let mut map: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
 
     if !(r_map.contains_key(&cmd.arg_key) && map.contains_key(&cmd.arg_key)) {
         return print_err("KEY_NOT_FOUND");
@@ -454,7 +576,7 @@ pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
 }
 
 pub fn geo_json(cmd: &GeoJsonCmd) -> String {
-    let map :RwLockReadGuard<BTreeMap<String,HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
 
     let empty_string = String::new();
 
@@ -478,10 +600,10 @@ pub fn geo_json(cmd: &GeoJsonCmd) -> String {
             Some(t) => {
                 geo_arr.push(t.to_owned())
             }
-            None => {
-            }
+            None => {}
         };
     }
 
     print_string(&build_geo_json(&geo_arr).to_string())
 }
+

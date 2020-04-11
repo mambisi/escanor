@@ -11,6 +11,7 @@ use serde_json::Value;
 use std::error;
 
 use crate::db::{ESRecord, DataType};
+use crate::{APP_VERSION, APP_AUTHORS, APP_HOMEPAGE};
 
 pub trait JsonPrint {
     fn print_json(&self) -> Value;
@@ -78,7 +79,7 @@ pub fn print_string(str: &String) -> String {
 }
 
 pub fn print_integer(int: i64) -> String {
-    format!("{}{}{}", INT_PREFIX,int, CRLF)
+    format!("{}{}{}", INT_PREFIX, int, CRLF)
 }
 
 pub fn print_ok() -> String {
@@ -101,6 +102,23 @@ pub fn build_geo_json<T: GeoJsonFeature>(f: &Vec<T>) -> Value {
           "features": features
         }
     )
+}
+
+pub fn print_app_info() {
+    let version = APP_VERSION;
+    let authors = APP_AUTHORS;
+    let homepage = APP_HOMEPAGE;
+    println!(r##"
+Ecanor version:{}  created by {}
+{}
+   ___      ___      ___      ___      ___      ___      ___
+  /\  \    /\  \    /\  \    /\  \    /\__\    /\  \    /\  \
+ /::\  \  /::\  \  /::\  \  /::\  \  /:| _|_  /::\  \  /::\  \
+/::\:\__\/\:\:\__\/:/\:\__\/::\:\__\/::|/\__\/:/\:\__\/::\:\__\
+\:\:\/  /\:\:\/__/\:\ \/__/\/\::/  /\/|::/  /\:\/:/  /\;:::/  /
+ \:\/  /  \::/  /  \:\__\    /:/  /   |:/  /  \::/  /  |:\/__/
+  \/__/    \/__/    \/__/    \/__/    \/__/    \/__/    \|__|
+"##, version,authors,homepage);
 }
 
 #[test]
