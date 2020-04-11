@@ -57,6 +57,7 @@ pub async fn start_up(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     printer::print_app_info();
 
     info!("{}", style("Server initialized").green());
+    info!("Ready to accept connections");
 
     loop {
         match listener.accept().await {

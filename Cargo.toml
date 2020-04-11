@@ -30,6 +30,7 @@ chrono = "0.4"
 multimap = "0.8.1"
 rmp-serde = "0.14.3"
 app_dirs2 = "2"
+serde_yaml = "0.8"
 
 [dev-dependencies]
 env_logger = "0.7.1"

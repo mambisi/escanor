@@ -21,7 +21,7 @@ mod unit_conv;
 mod tokenizer;
 mod config;
 mod syntax_analyzer;
-
+mod file_dirs;
 
 use clap::{App, Arg};
 
@@ -71,9 +71,8 @@ async fn main() {
     env_logger::init();
 
     info!("PID: {}", std::process::id());
-    db::init_db();
+    config::load_conf(true).await;
+    db::init_db().await;
     network::start_up(addrs).await;
-
-
     //network::start_up_ws(addrs)
 }

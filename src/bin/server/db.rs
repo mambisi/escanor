@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashSet, HashMap};
 use std::sync::{Arc, Mutex, RwLockReadGuard, RwLockWriteGuard};
 use std::sync::RwLock;
 use rstar::RTree;
-use crate::util;
+use crate::{util, file_dirs};
 use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd, GeoAddCmd, GeoHashCmd, GeoRadiusCmd, ArgOrder, GeoDistCmd, GeoRadiusByMemberCmd, GeoPosCmd, GeoDelCmd, GeoRemoveCmd, GeoJsonCmd, ExistsCmd, InfoCmd};
 use lazy_static::lazy_static;
 use crate::printer::*;
@@ -24,7 +24,7 @@ use chrono::{Date, Utc};
 
 lazy_static! {
     //Load balancing
-    static ref SAVE_IN_PROCEES : Arc<Mutex<u8>> = Arc::new(Mutex::new(0));
+    static ref SAVE_IN_PROCEES : Arc<RwLock<u8>> = Arc::new(RwLock::new(0));
     static ref KEYS_REM_EX_HASH : Arc<RwLock<HashMap<String, i64>>> = Arc::new(RwLock::new(HashMap::new()));
     static ref DELETED_KEYS_LIST : Arc<RwLock<HashSet<String>>> = Arc::new(RwLock::new(HashSet::new()));
     //Data
@@ -32,12 +32,18 @@ lazy_static! {
     static ref GEO_BTREE : Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
     static ref GEO_RTREE : Arc<RwLock<BTreeMap<String, RTree<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
     //Time keepers
-    static ref LAST_LOAD_TIME : Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
-    static ref LAST_LOAD_DURATION : Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
-    static ref LAST_SAVE_TIME : Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
-    static ref LAST_SAVE_DURATION : Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
-    static ref MUTATION_COUNT_SINCE_SAVE : Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+    static ref LAST_SAVE_TIME : Arc<RwLock<i64>> = Arc::new(RwLock::new(0));
+    static ref LAST_SAVE_DURATION : Arc<RwLock<u64>> = Arc::new(RwLock::new(0));
+    static ref MUTATION_COUNT_SINCE_SAVE : Arc<RwLock<u64>> = Arc::new(RwLock::new(0));
 }
+
+
+use rmp_serde;
+use rmp_serde::encode::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::fs::{OpenOptions, File};
+use tokio::time::Instant;
+use std::path::{PathBuf, Path};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Database {
@@ -45,12 +51,107 @@ struct Database {
     geo_tree: BTreeMap<String, HashSet<GeoPoint2D>>,
 }
 
-pub fn init_db() {
+async fn load_db() {
+    let path = match file_dirs::db_file_path() {
+        Some(t) => t,
+        None => { return; }
+    };
+    if !path.exists() {
+        return;
+    }
+    let instant = Instant::now();
+
+    let mut file = match OpenOptions::new().read(true).open(path).await {
+        Ok(t) => t,
+        Err(_) => { return; }
+    };
+    let mut content: Vec<u8> = vec![];
+    let total_byte_read = match file.read_to_end(&mut content).await {
+        Ok(t) => t,
+        Err(_) => { return; }
+    };
+
+    debug!("Total data read {}", total_byte_read);
+
+    let saved_db: Database = match rmp_serde::decode::from_read_ref(&content) {
+        Ok(t) => t,
+        Err(_) => { return; }
+    };
+    let mut btree: RwLockWriteGuard<BTreeMap<String, ESRecord>> = BTREE.write().unwrap();
+    let mut geo_btree: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
+    let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
+    btree.clone_from(&saved_db.btree);
+    geo_btree.clone_from(&saved_db.geo_tree);
+
+    geo_btree.iter().for_each(|(k, v)| {
+        let mut bulk_geo_hash_load: Vec<GeoPoint2D> = vec![];
+
+        v.iter().for_each(|p| {
+            bulk_geo_hash_load.push(p.clone())
+        });
+
+        r_map.insert(k.to_owned(), RTree::bulk_load(bulk_geo_hash_load));
+    });
+
+    let load_elapsed: Duration = instant.elapsed();
+    info!("Database loaded from disk: {} seconds", load_elapsed.as_secs());
+}
+
+async fn save_db() {
+    let mut btree_copy = BTreeMap::<String, ESRecord>::new();
+    let mut geo_btree_copy = BTreeMap::<String, HashSet<GeoPoint2D>>::new();
+
+    {
+        let btree: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
+        let geo_btree: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+        btree_copy.clone_from(&btree);
+        geo_btree_copy.clone_from(&geo_btree);
+    }
+
+
+    let db = Database {
+        btree: btree_copy,
+        geo_tree: geo_btree_copy,
+    };
+
+    let content = match rmp_serde::encode::to_vec(&db) {
+        Ok(b) => { b }
+        Err(e) => {
+            error!("Error saving: {}", e);
+            vec![]
+        }
+    };
+
+    debug!("total db bytes: {}", content.len());
+    let path = match file_dirs::db_file_path() {
+        Some(t) => t,
+        None => { return; }
+    };
+    let instant = Instant::now();
+
+    let mut file = match OpenOptions::new().write(true).create(true).open(path).await {
+        Ok(t) => t,
+        Err(_) => { return; }
+    };
+    match file.write_all(&content).await {
+        Ok(_) => {
+            return;
+        }
+        Err(e) => {
+            debug!("Error : {}", e);
+            return;
+        }
+    };
+}
+
+pub async fn init_db() {
     lazy_static::initialize(&BTREE);
     lazy_static::initialize(&GEO_BTREE);
     lazy_static::initialize(&GEO_RTREE);
     lazy_static::initialize(&KEYS_REM_EX_HASH);
     lazy_static::initialize(&DELETED_KEYS_LIST);
+
+    load_db().await;
 
     tokio::spawn(async {
         let mut interval = time::interval(Duration::from_secs(1));
@@ -86,48 +187,26 @@ pub fn init_db() {
         };
     });
 
-    /*
+
     tokio::spawn(async {
-        let mut interval = time::interval(Duration::from_secs(300));
+        let conf = crate::config::conf();
+        let save_interval = conf.database.save_after as u64;
+        let save_muts_cout = conf.database.mutations as u64;
+        let mut interval = time::interval(Duration::from_secs(conf.database.save_after as u64));
         loop {
             interval.tick().await;
+            let mut mutations = 0;
+            {
+                let mutation_count_since_save: RwLockReadGuard<u64> = MUTATION_COUNT_SINCE_SAVE.read().unwrap();
+                mutations = *mutation_count_since_save;
+            }
+
             let current_ts = Utc::now().timestamp();
-            info!("Saving Database");
-            save_db()
+            if save_muts_cout >= mutations {
+                save_db().await;
+            };
         };
-    });*/
-}
-
-use rmp_serde;
-use rmp_serde::encode::Error;
-
-
-//async fn load_db() {}
-
-fn save_db() {
-    let btree: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
-    let mut btree_copy = BTreeMap::<String, ESRecord>::new();
-
-    let geo_btree: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
-    let mut geo_btree_copy = BTreeMap::<String, HashSet<GeoPoint2D>>::new();
-
-    btree_copy.clone_from(&btree);
-    geo_btree_copy.clone_from(&geo_btree);
-
-    let db = Database {
-        btree: btree_copy,
-        geo_tree: geo_btree_copy,
-    };
-
-    let binary_vec = match rmp_serde::encode::to_vec(&db) {
-        Ok(b) => { b }
-        Err(e) => {
-            info!("Error saving: {}", e);
-            vec![]
-        }
-    };
-
-    println!("total bytes: {}", binary_vec.len());
+    });
 }
 
 fn remove_expired_keys() {
