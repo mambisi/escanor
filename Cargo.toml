@@ -8,6 +8,9 @@ edition = "2018"
 [[bin]]
 name = "escanor-server"
 path = "src/bin/server/main.rs"
+[[bin]]
+name = "escanor-cli"
+path = "src/bin/cli/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -36,6 +39,7 @@ rmp-serde = "0.14.3"
 app_dirs2 = "2"
 serde_yaml = "0.8"
 jsonpath_lib = "0.2.4"
+resp = "^0.3.6"
 
 [dev-dependencies]
 env_logger = "0.7.1"

@@ -11,22 +11,22 @@ use serde::export::Option::Some;
 use crate::unit_conv::Units;
 use nom::character::complete::char;
 
-pub fn parse(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
+pub fn compile(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
     let empty_string = String::new();
     let first_char = buf[0] as char;
     return match first_char {
         '*' | '$' | '+' => {
-            parse_resp(buf)
+            compile_resp(buf)
         }
         _ => {
-            parse_cli(buf)
+            compile_raw(buf)
         }
     };
 
     Err(error::SyntaxError)
 }
 
-pub fn parse_cli(cmd: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
+pub fn compile_raw(cmd: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
     let end_chars = &cmd[(cmd.len() - 2)..];
     let last_2_strings = String::from_utf8(end_chars.to_vec()).unwrap_or("".to_string());
     let tokens: Vec<String> = if last_2_strings == "\r\n" {
@@ -41,7 +41,7 @@ pub fn parse_cli(cmd: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
     }
 }
 
-pub fn parse_resp(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
+pub fn compile_resp(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
     let tokens: Vec<String> = tokenizer::generate_tokens_from_resp(buf);
     match syntax_analyzer::analyse_token_stream(tokens) {
         Ok(t) => Ok(t),

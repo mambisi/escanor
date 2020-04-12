@@ -511,6 +511,7 @@ dependencies = [
  "nom 5.1.1",
  "redis-protocol",
  "regex",
+ "resp",
  "rmp-serde",
  "rstar",
  "serde",
@@ -1451,6 +1452,12 @@ checksum = "4a83fa3702a688b9359eccba92d153ac33fd2e8462f9e0e3fdf155239ea7792e"
 dependencies = [
  "winapi 0.3.8",
 ]
+
+[[package]]
+name = "resp"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488aa0721fc6071b8878705efcb231dd9cccb641b905b439cd9fb8040977c172"
 
 [[package]]
 name = "rmp"

@@ -33,7 +33,7 @@ fn process_socket(mut socket: TcpStream) {
                 }
             };
 
-            let message: String = match command::parse(&buf[0..n]) {
+            let message: String = match command::compile(&buf[0..n]) {
                 Ok(cmd) => {
                     let res = cmd.execute().to_owned();
                     res

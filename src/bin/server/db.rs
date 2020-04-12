@@ -88,6 +88,8 @@ async fn load_db() {
     btree.clone_from(&saved_db.btree);
     geo_btree.clone_from(&saved_db.geo_tree);
 
+
+
     geo_btree.iter().for_each(|(k, v)| {
         let mut bulk_geo_hash_load: Vec<GeoPoint2D> = vec![];
 
