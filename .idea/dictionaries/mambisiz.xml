@@ -10,6 +10,11 @@
       <w>georadiusbymember</w>
       <w>georem</w>
       <w>georemove</w>
+      <w>jdel</w>
+      <w>jget</w>
+      <w>jmerge</w>
+      <w>jpath</w>
+      <w>jset</w>
     </words>
   </dictionary>
 </component>
