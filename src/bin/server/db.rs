@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, RwLockReadGuard, RwLockWriteGuard};
 use std::sync::RwLock;
 use rstar::RTree;
 use crate::{util, file_dirs};
-use crate::command::{SetCmd, GetCmd, DelCmd, KeysCmd, GeoAddCmd, GeoHashCmd, GeoRadiusCmd, ArgOrder, GeoDistCmd, GeoRadiusByMemberCmd, GeoPosCmd, GeoDelCmd, GeoRemoveCmd, GeoJsonCmd, ExistsCmd, InfoCmd};
+use crate::command::*;
 use lazy_static::lazy_static;
 use crate::printer::*;
 use crate::error::CustomMessageError;
@@ -18,9 +18,12 @@ use glob::Pattern;
 
 extern crate chrono;
 
+use serde_json::Value;
 use tokio::time;
 use std::time::{Duration, SystemTime};
 use chrono::{Date, Utc};
+
+extern crate jsonpath_lib as jsonpath;
 
 lazy_static! {
     //Load balancing
@@ -29,6 +32,7 @@ lazy_static! {
     static ref DELETED_KEYS_LIST : Arc<RwLock<HashSet<String>>> = Arc::new(RwLock::new(HashSet::new()));
     //Data
     static ref BTREE : Arc<RwLock<BTreeMap<String, ESRecord>>> = Arc::new(RwLock::new(BTreeMap::new()));
+    static ref JSON_BTREE : Arc<RwLock<BTreeMap<String, Value>>> = Arc::new(RwLock::new(BTreeMap::new()));
     static ref GEO_BTREE : Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
     static ref GEO_RTREE : Arc<RwLock<BTreeMap<String, RTree<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
     //Time keepers
@@ -44,6 +48,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::fs::{OpenOptions, File};
 use tokio::time::Instant;
 use std::path::{PathBuf, Path};
+use self::jsonpath::JsonPathError;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Database {
@@ -686,3 +691,89 @@ pub fn geo_json(cmd: &GeoJsonCmd) -> String {
     print_string(&build_geo_json(&geo_arr).to_string())
 }
 
+// JSET, JGET, JDEL, JPATH, JMERGE
+pub fn jset(cmd: &JSetCmd) -> String {
+    let mut map: RwLockWriteGuard<BTreeMap<String, Value>> = JSON_BTREE.write().unwrap();
+
+
+    let value: Value = match serde_json::from_str(&cmd.arg_value) {
+        Ok(t) => t,
+        Err(_) => { return print_err("ERR invalid json"); }
+    };
+
+    map.insert(cmd.arg_key.to_owned(), value);
+
+    print_ok()
+}
+
+pub fn jmerge(cmd: &JMergeCmd) -> String {
+    let null_value = Value::Null;
+    let mut map: RwLockWriteGuard<BTreeMap<String, Value>> = JSON_BTREE.write().unwrap();
+
+    let mut value: Value = match serde_json::from_str(&cmd.arg_value) {
+        Ok(t) => t,
+        Err(_) => { return print_err("ERR invalid json"); }
+    };
+
+    let prev_value = match map.get(&cmd.arg_key) {
+        None => { &null_value }
+        Some(v) => { v }
+    };
+
+    if prev_value.is_null() {
+        map.insert(cmd.arg_key.to_owned(), value);
+        return print_ok();
+    }
+
+    util::merge(&mut value, prev_value);
+    map.insert(cmd.arg_key.to_owned(), value);
+    print_ok()
+}
+
+pub fn jget(cmd: &JGetCmd) -> String {
+    let null_value = Value::Null;
+    let map: RwLockReadGuard<BTreeMap<String, Value>> = JSON_BTREE.read().unwrap();
+
+    let value = match map.get(&cmd.arg_key) {
+        None => { &null_value }
+        Some(v) => { v }
+    };
+
+    if value.is_null() {
+        return print_string(&"".to_owned());
+    }
+    print_string(&value.to_string())
+}
+
+pub fn jpath(cmd: &JPathCmd) -> String {
+    let null_value = Value::Null;
+    let map: RwLockReadGuard<BTreeMap<String, Value>> = JSON_BTREE.read().unwrap();
+
+    let value = match map.get(&cmd.arg_key) {
+        None => { &null_value }
+        Some(v) => { v }
+    };
+
+    if value.is_null() {
+        return print_string(&"".to_owned());
+    }
+    let json_result = match jsonpath::select(value, cmd.arg_selector.as_str()) {
+        Ok(v) => { v }
+        Err(_) => { return print_string(&String::from("")); }
+    };
+
+    let mut j_strings : Vec<String> = vec![];
+
+    for v in json_result {
+        j_strings.push(v.to_owned().to_string())
+    }
+    //let selected = json!(json_result);
+    print_arr(j_strings)
+}
+
+pub fn jdel(cmd: &JDelCmd) -> String {
+    let null_value = Value::Null;
+    let mut map: RwLockWriteGuard<BTreeMap<String, Value>> = JSON_BTREE.write().unwrap();
+    map.remove(&cmd.arg_key);
+    print_ok()
+}

@@ -173,6 +173,31 @@ pub struct InfoCmd;
 #[derive(Debug)]
 pub struct PingCmd;
 
+#[derive(Debug)]
+pub struct JSetCmd {
+    pub arg_key: String,
+    pub arg_value: String
+}
+
+#[derive(Debug)]
+pub struct JMergeCmd {
+    pub arg_key: String,
+    pub arg_value: String
+}
+#[derive(Debug)]
+pub struct JGetCmd {
+    pub arg_key: String
+}
+#[derive(Debug)]
+pub struct JPathCmd {
+    pub arg_key: String,
+    pub arg_selector: String
+}
+#[derive(Debug)]
+pub struct JDelCmd {
+    pub arg_key: String
+}
+
 impl Command for PingCmd {
     fn execute(&self) -> String {
         printer::print_pong()
@@ -266,5 +291,36 @@ impl Command for GeoRemoveCmd {
 impl Command for GeoJsonCmd {
     fn execute(&self) -> String {
         db::geo_json(self)
+    }
+}
+
+
+impl Command for JSetCmd {
+    fn execute(&self) -> String {
+        db::jset(self)
+    }
+}
+
+impl Command for JMergeCmd {
+    fn execute(&self) -> String {
+        db::jmerge(self)
+    }
+}
+
+impl Command for JGetCmd {
+    fn execute(&self) -> String {
+        db::jget(self)
+    }
+}
+
+impl Command for JPathCmd {
+    fn execute(&self) -> String {
+        db::jpath(self)
+    }
+}
+
+impl Command for JDelCmd {
+    fn execute(&self) -> String {
+        db::jdel(self)
     }
 }

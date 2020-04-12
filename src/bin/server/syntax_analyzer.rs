@@ -21,7 +21,7 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         if arg_key.is_empty() { return Err(error::SyntaxError); }
 
         let arg_value = itr.next().unwrap_or(&empty_string);
-        if arg_key.is_empty() { return Err(error::SyntaxError); }
+        if arg_value.is_empty() { return Err(error::SyntaxError); }
 
         let arg_ex_cmd = &itr.next().unwrap_or(&empty_string).to_lowercase();
 
@@ -57,11 +57,10 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
     } else if cmd == "keys" {
         let arg_pattern = itr.next().unwrap_or(&empty_string);
         if arg_pattern.is_empty() { return Err(error::SyntaxError); }
-        return Ok(Box::new(KeysCmd{
+        return Ok(Box::new(KeysCmd {
             pattern: arg_pattern.to_owned()
         }));
-    }
-    else if cmd == "exists" {
+    } else if cmd == "exists" {
         let mut keys: Vec<String> = vec![];
 
         while let Some(i) = itr.next() {
@@ -71,11 +70,10 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
             return Err(error::SyntaxError);
         }
 
-        return Ok(Box::new(ExistsCmd{
+        return Ok(Box::new(ExistsCmd {
             keys
         }));
-    }
-    else if cmd == "info" {
+    } else if cmd == "info" {
         return Ok(Box::new(InfoCmd));
     }
     // GEOADD [key] long lat tag [long lat tag...]
@@ -310,6 +308,50 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         return Ok(Box::new(GeoRemoveCmd {
             arg_key: arg_key.to_owned(),
             items: items_after_key,
+        }));
+    } else if cmd == "jset" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_value = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+        return Ok(Box::new(JSetCmd {
+            arg_key: arg_key.to_owned(),
+            arg_value: arg_value.to_owned(),
+        }));
+    } else if cmd == "jmerge" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_value = itr.next().unwrap_or(&empty_string);
+        if arg_value.is_empty() { return Err(error::SyntaxError); }
+        return Ok(Box::new(JMergeCmd {
+            arg_key: arg_key.to_owned(),
+            arg_value: arg_value.to_owned(),
+        }));
+    } else if cmd == "jget" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        return Ok(Box::new(JGetCmd {
+            arg_key: arg_key.to_owned()
+        }));
+    } else if cmd == "jpath" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_selector = itr.next().unwrap_or(&empty_string);
+        if arg_selector.is_empty() { return Err(error::SyntaxError); }
+        return Ok(Box::new(JPathCmd {
+            arg_key: arg_key.to_owned(),
+            arg_selector: arg_selector.to_owned(),
+        }));
+    }else if cmd == "jdel" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        return Ok(Box::new(JDelCmd {
+            arg_key: arg_key.to_owned(),
         }));
     }
 
