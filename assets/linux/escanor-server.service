@@ -1,8 +1,12 @@
 [Unit]
 Description=Escanor Database service.
+After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
+Restart=always
+RestartSec=1
 ExecStart=/bin/bash /usr/bin/escanor-server-s.sh
 
 [Install]
