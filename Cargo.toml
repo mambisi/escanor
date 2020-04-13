@@ -15,7 +15,7 @@ path = "src/bin/cli/main.rs"
 [package.metadata.deb]
 maintainer = "Mambisi Zempare <lilbizi96@gmail.com>"
 copyright = "2020, Mambisi Zempare <lilbizi96@gmail.com>"
-license-file = ["LICENSE", "LICENSE"]
+license-file = ["LICENSE", "2"]
 depends = "$auto, systemd"
 extended-description = """Escanor is a high performance in memory database written in rust \
  it offers performance similar to redis and implement the redis protocol with useful additions for json data manipulations."""
