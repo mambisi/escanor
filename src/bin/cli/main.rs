@@ -5,7 +5,7 @@ extern crate clap;
 
 use linefeed::chars::escape_sequence;
 use linefeed::command::COMMANDS;
-use linefeed::{Command, Function, Interface, Prompter, ReadResult, Terminal, DefaultTerminal};
+use linefeed::{Command, Function, Interface, Prompter, ReadResult, Terminal, DefaultTerminal, Signal};
 use linefeed::inputrc::parse_text;
 use std::io;
 
@@ -26,7 +26,7 @@ use std::str::FromStr;
 use cookie_factory::lib::std::io::Error;
 use std::sync::Arc;
 
-const DEMO_FN_SEQ: &str = "c";
+const DEMO_FN_SEQ: &str = "\n^c";
 
 fn main() -> io::Result<()> {
     let matches = App::new("escanor-cli")
@@ -91,59 +91,74 @@ fn main() -> io::Result<()> {
     }
 
     let mut interface = Interface::new("Escanor client 0.0.1")?;
+    interface.set_report_signal(Signal::Interrupt, true);
 
-    interface.define_function("demo-function", Arc::new(DemoFunction));
-
-    interface.bind_sequence(DEMO_FN_SEQ, Command::from_str("demo-function"));
-
-    println!("Enter \"exit\" to quit.");
+    println!("escanor cli 1.0");
+    println!("Press Ctrl+C or enter \"exit\" to quit. If not connect press enter to retry connection");
     loop {
-
         match create_client(hostname, port, password, db) {
             Ok(mut cli) => {
-                interface.set_prompt(&format!("{}:{}> ",hostname,port)).unwrap();
+                interface.set_prompt(&format!("{}:{}> ", hostname, port)).unwrap();
                 let _ = run_program(&mut cli, &mut interface);
             }
             Err(err) => {
-                interface.set_prompt("not connected> ").unwrap();
-                match interface.read_line() {
-                    Ok(ReadResult::Input(line)) => {
+                interface.set_prompt("not connected> ")?;
+                let res = interface.read_line()?;
+                match res {
+                    ReadResult::Eof => { return Ok(()); }
+                    ReadResult::Input(line) => {
                         if !line.trim().is_empty() {
                             interface.add_history_unique(line.clone());
                         }
                         let (cmd, args) = split_first_word(&line);
-                        ex_sys_cmd(cmd,&mut interface);
-                        continue
-                    },
-                    Err(_) => {},
-                    _ => {}
-                };
+                        ex_sys_cmd(cmd, &mut interface);
+                        continue;
+                    }
+                    ReadResult::Signal(sig) => {
+                        if sig == Signal::Interrupt {
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                return Ok(());
             }
         };
     }
 }
 
 fn run_program(client: &mut Client, interface: &mut Interface<DefaultTerminal>) -> io::Result<()> {
-    while let ReadResult::Input(line) = interface.read_line()? {
-        if !line.trim().is_empty() {
-            interface.add_history_unique(line.clone());
-        }
-        let (cmd, args) = split_first_word(&line);
-        let commands = parser::parse_raw_cmd(line.clone().as_bytes());
-        let ref_commands: Vec<&str> = commands.iter().map(AsRef::as_ref).collect();
-        match client.cmd(&ref_commands) {
-            Ok(v) => {
-                println!("{}", v.to_beautify_string());
+    loop {
+        let res = interface.read_line()?;
+        match res {
+            ReadResult::Eof => break,
+            ReadResult::Input(line) => {
+                if !line.trim().is_empty() {
+                    interface.add_history_unique(line.clone());
+                }
+                let (cmd, args) = split_first_word(&line);
+                ex_sys_cmd(cmd,interface);
+                let commands = parser::parse_raw_cmd(line.clone().as_bytes());
+                let ref_commands: Vec<&str> = commands.iter().map(AsRef::as_ref).collect();
+                match client.cmd(&ref_commands) {
+                    Ok(v) => {
+                        println!("{}", v.to_beautify_string());
+                    }
+                    Err(_e) => {
+                        break;
+                    }
+                }
             }
-            Err(_e) => {
-               break;
+            ReadResult::Signal(sig) => {
+                if sig == Signal::Interrupt {
+                    std::process::exit(1);
+                }
             }
         }
     }
     Ok(())
 }
 
-fn ex_sys_cmd(command: &str,rinterface: &mut Interface<DefaultTerminal>) {
+fn ex_sys_cmd(command: &str, rinterface: &mut Interface<DefaultTerminal>) {
     match command {
         "exit" => {
             std::process::exit(1);
@@ -158,16 +173,5 @@ fn split_first_word(s: &str) -> (&str, &str) {
     match s.find(|ch: char| ch.is_whitespace()) {
         Some(pos) => (&s[..pos], s[pos..].trim_start()),
         None => (s, "")
-    }
-}
-
-struct DemoFunction;
-
-impl<Term: Terminal> Function<Term> for DemoFunction {
-    fn execute(&self, prompter: &mut Prompter<Term>, _count: i32, _ch: char) -> io::Result<()> {
-        assert_eq!(prompter.sequence(), DEMO_FN_SEQ);
-        let mut writer = prompter.writer_erase()?;
-
-        writeln!(writer, "demo function executed")
     }
 }

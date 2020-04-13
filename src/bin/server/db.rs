@@ -53,6 +53,7 @@ use self::jsonpath::JsonPathError;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Database {
     btree: BTreeMap<String, ESRecord>,
+    json_btree: BTreeMap<String,Value>,
     geo_tree: BTreeMap<String, HashSet<GeoPoint2D>>,
 }
 
@@ -83,8 +84,11 @@ async fn load_db() {
         Err(_) => { return; }
     };
     let mut btree: RwLockWriteGuard<BTreeMap<String, ESRecord>> = BTREE.write().unwrap();
+    let mut json_btree: RwLockWriteGuard<BTreeMap<String, Value>> = JSON_BTREE.write().unwrap();
     let mut geo_btree: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
     let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
+
+    json_btree.clone_from(&saved_db.json_btree);
     btree.clone_from(&saved_db.btree);
     geo_btree.clone_from(&saved_db.geo_tree);
 
@@ -105,12 +109,16 @@ async fn load_db() {
 }
 
 async fn save_db() {
+    let mut json_btree_copy = BTreeMap::<String, Value>::new();
     let mut btree_copy = BTreeMap::<String, ESRecord>::new();
     let mut geo_btree_copy = BTreeMap::<String, HashSet<GeoPoint2D>>::new();
 
     {
+        let json_btree: RwLockReadGuard<BTreeMap<String, Value>> = JSON_BTREE.read().unwrap();
         let btree: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
         let geo_btree: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+
+        json_btree_copy.clone_from(&json_btree);
         btree_copy.clone_from(&btree);
         geo_btree_copy.clone_from(&geo_btree);
     }
@@ -119,6 +127,7 @@ async fn save_db() {
     let db = Database {
         btree: btree_copy,
         geo_tree: geo_btree_copy,
+        json_btree : json_btree_copy
     };
 
     let content = match rmp_serde::encode::to_vec(&db) {
@@ -153,6 +162,7 @@ async fn save_db() {
 
 pub async fn init_db() {
     lazy_static::initialize(&BTREE);
+    lazy_static::initialize(&JSON_BTREE);
     lazy_static::initialize(&GEO_BTREE);
     lazy_static::initialize(&GEO_RTREE);
     lazy_static::initialize(&KEYS_REM_EX_HASH);

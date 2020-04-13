@@ -1,0 +1,31 @@
+---
+#################################################################################
+#   Configuration for escanor  <Mambisi Zempare>                                #
+#    ___      ___      ___      ___      ___      ___      ___                  #
+#   /\  \    /\  \    /\  \    /\  \    /\__\    /\  \    /\  \                 #
+#  /::\  \  /::\  \  /::\  \  /::\  \  /:| _|_  /::\  \  /::\  \                #
+# /::\:\__\/\:\:\__\/:/\:\__\/::\:\__\/::|/\__\/:/\:\__\/::\:\__\               #
+# \:\:\/  /\:\:\/__/\:\ \/__/\/\::/  /\/|::/  /\:\/:/  /\;:::/  /               #
+#  \:\/  /  \::/  /  \:\__\    /:/  /   |:/  /  \::/  /  |:\/__/                #
+#   \/__/    \/__/    \/__/    \/__/    \/__/    \/__/    \|__|                 #
+#                                                                               #
+#################################################################################
+
+#Database configuation
+database:
+  # This indicates the time schedule interval in secs when to try save database to diskt
+  save_after: 60 #secs
+  # This indicates the number of mutations needed for the sheduler to save to the database
+  # on the disk. A mutation is counted as every successful write to the in memory dabase
+  mutations: 5
+
+#Network configuation
+network:
+  # Server port
+  port: 6379
+  # Address which the server should bind to 
+  bind: 127.0.0.1
+  # Maximum message the server can recieve
+  max_packet: 10 #MB
+  # Maximum number of client connection, 0 means not limit
+  max_connections: 0
