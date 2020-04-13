@@ -22,6 +22,7 @@ extended-description = """Escanor is a high performance in memory database writt
 section = "admin"
 priority = "optional"
 assets = [
+    ["assets/linux/escanor-server.service", "/etc/systemd/system/", "644"],
     ["assets/linux/config.yaml", "usr/.config/escanor/", "644"],
     ["target/release/escanor-cli", "usr/bin/", "755"],
     ["target/release/escanor-server", "usr/bin/", "755"]
