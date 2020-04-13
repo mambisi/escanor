@@ -59,7 +59,7 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     }
     //path.join("");
     //rewrite()
-    let mut file: File = match OpenOptions::new().read(true).open(path).await {
+    let mut file: File = match OpenOptions::new().read(true).open(path.clone()).await {
         Err(e) => {
             panic!("Configuration file not loaded");
             return Err("Configuration file not loaded".to_owned());
@@ -84,7 +84,7 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     conf_map.iter().for_each(|(k, v)| {
         config_map.insert(k.to_owned(), v.to_owned());
     });
-    info!("Configuration loaded");
+    info!("Configuration loaded from:{}",path.as_os_str().to_str().unwrap());
     Ok(())
 }
 

@@ -65,6 +65,9 @@ async fn load_db() {
     if !path.exists() {
         return;
     }
+
+    info!("Loading DB file: {}", path.as_os_str().to_str().unwrap());
+
     let instant = Instant::now();
 
     let mut file = match OpenOptions::new().read(true).open(path).await {

@@ -18,8 +18,6 @@ database:
   # This indicates the number of mutations needed for the sheduler to save to the database
   # on the disk. A mutation is counted as every successful write to the in memory dabase
   mutations: 5
-  # directory where database dumps are stored
-  dir: $HOME/.caches/
 
 #Network configuation
 network:
