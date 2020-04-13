@@ -170,6 +170,3 @@ pub fn get_conf_by_key(key: &String) -> Option<String> {
     }
     return Some(value.to_owned());
 }
-
-const conf
-
