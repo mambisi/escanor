@@ -25,7 +25,7 @@ database:
 network:
   # Server port
   port: 6379
-  # Address which the server should bind to 
+  # Address which the server should bind to
   bind: 127.0.0.1
   # Maximum message the server can recieve
   max_packet: 10 #MB
@@ -33,4 +33,4 @@ network:
   max_connections: 0
 # uncomment require_auth to to require authentication for server communication
 server:
-  #require_auth: mypassword
+#require_auth: mypassword

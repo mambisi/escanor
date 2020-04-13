@@ -19,13 +19,13 @@ database:
   # on the disk. A mutation is counted as every successful write to the in memory dabase
   mutations: 5
   # directory where database dumps are stored
-  dir: /usr/lib/escanor
+  dir: $HOME/.caches/
 
 #Network configuation
 network:
   # Server port
   port: 6379
-  # Address which the server should bind to 
+  # Address which the server should bind to
   bind: 127.0.0.1
   # Maximum message the server can recieve
   max_packet: 10 #MB
@@ -33,4 +33,4 @@ network:
   max_connections: 0
 # uncomment require_auth to to require authentication for server communication
 server:
-  #require_auth: mypassword
+#require_auth: mypassword

@@ -12,6 +12,21 @@ path = "src/bin/server/main.rs"
 name = "escanor-cli"
 path = "src/bin/cli/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.metadata.deb]
+maintainer = "Mambisi Zempare <lilbizi96@gmail.com>"
+copyright = "2020, Mambisi Zempare <lilbizi96@gmail.com>"
+license-file = ["LICENSE", "3"]
+depends = "$auto, systemd"
+extended-description = """Escanor is a high performance in memory database written in rust \
+ it offers performance similar to redis and implement the redis protocol with useful additions for json data manipulations."""
+section = "admin"
+priority = "optional"
+assets = [
+    ["assets/org.freedesktop.policykit.systemd-manager.policy", "usr/share/polkit-1/actions/", "644"],
+    ["assets/linux/config.yaml", "usr/.config/escanor/", "644"],
+    ["target/release/escanor-cli", "usr/bin/", "755"],
+    ["target/release/escanor-server", "usr/bin/", "755"]
+]
 
 [dependencies]
 lazy_static = "1.1.1"
