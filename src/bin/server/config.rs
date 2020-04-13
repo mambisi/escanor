@@ -36,6 +36,8 @@ use std::path::{PathBuf, Path};
 use serde_yaml;
 use crate::file_dirs;
 use tokio::runtime::Runtime;
+use nom::AsBytes;
+
 pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     let path = match file_dirs::config_file_path() {
         None => {
@@ -46,7 +48,7 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     };
 
     if !path.exists() && force_rewrite {
-        match rewrite().await {
+        match write_default_config_file().await {
             Ok(_) => {}
             Err(e) => { return Err(e); }
         };
@@ -86,30 +88,6 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     Ok(())
 }
 
-pub async fn rewrite() -> Result<(), String> {
-    let path = match file_dirs::config_file_path() {
-        None => { return Err("Error reading file path".to_owned()); }
-        Some(p) => { p }
-    };
-    let mut file = match OpenOptions::new().write(true).create(true).open(path).await {
-        Err(e) => {
-            println!("{}", e);
-            return Err("Creating reading file path".to_owned());
-        }
-        Ok(file) => file,
-    };
-
-    let conf = conf();
-    let buf = serde_yaml::to_vec(&conf).unwrap();
-    return match file.write_all(&buf).await {
-        Ok(_) => {
-            Ok(())
-        }
-        Err(e) => {
-            Err("".to_owned())
-        }
-    };
-}
 
 const MUTABLE_CONF_KEYS: [&str; 2] = ["database.save_after", "database.mutations"];
 
@@ -169,4 +147,65 @@ pub fn get_conf_by_key(key: &String) -> Option<String> {
         return None;
     }
     return Some(value.to_owned());
+}
+
+pub async fn write_default_config_file() -> Result<(), String> {
+    const DEFAULT_CONFIG_FILE: &str = r#"
+---
+#################################################################################
+#   Configuration for escanor  <Mambisi Zempare>                                #
+#    ___      ___      ___      ___      ___      ___      ___                  #
+#   /\  \    /\  \    /\  \    /\  \    /\__\    /\  \    /\  \                 #
+#  /::\  \  /::\  \  /::\  \  /::\  \  /:| _|_  /::\  \  /::\  \                #
+# /::\:\__\/\:\:\__\/:/\:\__\/::\:\__\/::|/\__\/:/\:\__\/::\:\__\               #
+# \:\:\/  /\:\:\/__/\:\ \/__/\/\::/  /\/|::/  /\:\/:/  /\;:::/  /               #
+#  \:\/  /  \::/  /  \:\__\    /:/  /   |:/  /  \::/  /  |:\/__/                #
+#   \/__/    \/__/    \/__/    \/__/    \/__/    \/__/    \|__|                 #
+#                                                                               #
+#################################################################################
+
+#Database configuation
+database:
+  # This indicates the time schedule interval in secs when to try save database to diskt
+  save_after: 60 #secs
+  # This indicates the number of mutations needed for the sheduler to save to the database
+  # on the disk. A mutation is counted as every successful write to the in memory dabase
+  mutations: 5
+
+#Network configuation
+network:
+  # Server port
+  port: 6379
+  # Address which the server should bind to
+  bind: 127.0.0.1
+  # Maximum message the server can recieve
+  max_packet: 10 #MB
+  # Maximum number of client connection, 0 means not limit
+  max_connections: 0
+# uncomment require_auth to to require authentication for server communication
+server:
+#require_auth: mypassword
+"#;
+    let path = match file_dirs::config_file_path() {
+        None => { return Err("Error reading file path".to_owned()); }
+        Some(p) => { p }
+    };
+    let mut file = match OpenOptions::new().write(true).create(true).open(path).await {
+        Err(e) => {
+            println!("{}", e);
+            return Err("Creating reading file path".to_owned());
+        }
+        Ok(file) => file,
+    };
+
+
+    let buf = DEFAULT_CONFIG_FILE.as_bytes();
+    return match file.write_all(&buf).await {
+        Ok(_) => {
+            Ok(())
+        }
+        Err(e) => {
+            Err("".to_owned())
+        }
+    };
 }

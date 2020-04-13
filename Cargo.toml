@@ -12,6 +12,8 @@ path = "src/bin/server/main.rs"
 name = "escanor-cli"
 path = "src/bin/cli/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
 [package.metadata.deb]
 maintainer = "Mambisi Zempare <lilbizi96@gmail.com>"
 copyright = "2020, Mambisi Zempare <lilbizi96@gmail.com>"
