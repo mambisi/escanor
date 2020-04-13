@@ -3,7 +3,7 @@ Description=Escanor Database service.
 
 [Service]
 Type=simple
-ExecStart=/bin/bash /usr/bin/escanor-server
+ExecStart=/bin/bash /usr/bin/escanor-server-s.sh
 
 [Install]
 WantedBy=multi-user.target

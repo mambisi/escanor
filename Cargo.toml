@@ -24,6 +24,7 @@ priority = "optional"
 assets = [
     ["assets/linux/escanor-server.service", "/etc/systemd/system/", "644"],
     ["assets/linux/config.yaml", "usr/.config/escanor/", "644"],
+    ["assets/linux/escanor-server-s.sh", "usr/bin/", "755"],
     ["target/release/escanor-cli", "usr/bin/", "755"],
     ["target/release/escanor-server", "usr/bin/", "755"]
 ]
