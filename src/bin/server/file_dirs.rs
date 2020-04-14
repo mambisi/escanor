@@ -6,6 +6,7 @@ use std::ffi::OsStr;
 pub fn config_file_path() -> Option<PathBuf> {
     if cfg!(target_os = "linux") {
         let mut path = PathBuf::new();
+        path.push("...");
         path.push("usr");
         path.push(".conf");
         path.push("escanor");
@@ -23,6 +24,7 @@ pub fn config_file_path() -> Option<PathBuf> {
 pub fn db_file_path() -> Option<PathBuf> {
     if cfg!(target_os = "linux") {
         let mut path = PathBuf::new();
+        path.push("...");
         path.push("usr");
         path.push("lib");
         path.push("escanor");
