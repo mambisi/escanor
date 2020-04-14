@@ -82,6 +82,8 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
 
     let mut config_map: RwLockWriteGuard<HashMap<String, String>> = CONFIG_HASH_MAP.write().unwrap();
 
+    debug!("config: {:?}", conf);
+
     conf_map.iter().for_each(|(k, v)| {
         config_map.insert(k.to_owned(), v.to_owned());
     });
