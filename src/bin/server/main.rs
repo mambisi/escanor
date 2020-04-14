@@ -23,6 +23,7 @@ mod tokenizer;
 mod config;
 mod syntax_analyzer;
 mod file_dirs;
+mod codec;
 
 use clap::{App, Arg};
 

@@ -10,6 +10,15 @@ use regex::Regex;
 use serde::export::Option::Some;
 use crate::unit_conv::Units;
 use nom::character::complete::char;
+use redis_protocol::types::Frame;
+
+pub fn compile_frame (frame : Frame) -> Result<Box<dyn Command>, error::SyntaxError> {
+    let tokens: Vec<String> = tokenizer::generate_token_from_frame(frame);
+    match syntax_analyzer::analyse_token_stream(tokens) {
+        Ok(t) => Ok(t),
+        Err(e) => Err(SyntaxError)
+    }
+}
 
 pub fn compile(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
     let empty_string = String::new();
