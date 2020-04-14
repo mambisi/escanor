@@ -39,7 +39,7 @@ use tokio::runtime::Runtime;
 use nom::AsBytes;
 
 pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
-    debug!("Op")
+    debug!("Opening config...");
     let path = match file_dirs::config_file_path() {
         None => {
             info!("Path");
