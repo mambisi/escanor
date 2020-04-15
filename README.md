@@ -18,11 +18,18 @@ Escanor is a high performance in memory database written in [rust](http://rust-l
 
 - Client Cli included.
 
-## [Download Binaries](https://github.com/mambisi/escanor/releases)
-[Download]() the latest release from the release page, binaries are available for Windows, Mac and Linux.
+## [Download](https://github.com/mambisi/escanor/releases)
+Download the latest release from the release page, binaries are available for Windows, Mac and Linux.
 
-## [Install](https://github.com/mambisi/escanor/wiki)
-Installation instructions are available in the [Wiki Page](https://github.com/mambisi/escanor/wiki)
+## [Install](https://github.com/mambisi/escanor/wiki/Installation)
+Installation instructions are available in the Wiki Page
+
+## [Commands](https://github.com/mambisi/escanor/wiki)
+Supported commands:
+``set``,``get``,``del``,``get``,``geoadd``,``geodel``,``georem``,``georadius``,``georadiusbymember``
+ ,``geohash``,``geojson``,``jset``,``jget``,``jpath``,``jmerge``
+ checkout the wiki page on how to use these commands
+[WIKI PAGE](https://github.com/mambisi/escanor/wiki)
 
 ## Run
 
