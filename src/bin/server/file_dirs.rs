@@ -4,24 +4,18 @@ use crate::APP_INFO;
 use std::ffi::OsStr;
 
 pub fn config_file_path() -> Option<PathBuf> {
-    /*
-    if cfg!(target_os = "linux") {
-        let mut path = PathBuf::new();
-        path.push("root");
-        path.push("usr");
-        path.push(".conf");
-        path.push("escanor");
-        path.push("config");
-        path.set_extension("yaml");
 
+    if cfg!(target_os = "linux") {
         let mut  directory  = PathBuf::from("/usr/.conf/escanor");
         if !directory.exists() {
-            std::fs::create_dir_all(directory);
+            std::fs::create_dir_all(directory.clone());
         }
-        return Some(path);
+        directory.push("config");
+        directory.set_extension("yaml");
+        return Some(directory);
     }
-    */
-    let p = match create_file_path(AppDataType::SharedConfig, "config", "yaml") {
+
+    let p = match create_file_path(AppDataType::UserConfig, "config", "yaml") {
         None => { return None; }
         Some(p) => { p }
     };
@@ -29,24 +23,18 @@ pub fn config_file_path() -> Option<PathBuf> {
 }
 
 pub fn db_file_path() -> Option<PathBuf> {
-    /*
-    if cfg!(target_os = "linux") {
-        let mut path = PathBuf::new();
-        path.push("root");
-        path.push("usr");
-        path.push("lib");
-        path.push("escanor");
-        path.push("dump");
-        path.set_extension("esbd");
 
+    if cfg!(target_os = "linux") {
         let mut  directory  = PathBuf::from("/usr/lib/escanor");
         if !directory.exists() {
-            std::fs::create_dir_all(directory);
+            std::fs::create_dir_all(directory.clone());
         }
-        return Some(path);
+        directory.push("dump");
+        directory.set_extension("esdb");
+        return Some(directory);
     }
-*/
-    let p = match create_file_path(AppDataType::SharedData, "dump", "esdb") {
+
+    let p = match create_file_path(AppDataType::UserCache, "dump", "esdb") {
         None => { return None; }
         Some(p) => { p }
     };
