@@ -6,14 +6,13 @@ use std::ffi::OsStr;
 pub fn config_file_path() -> Option<PathBuf> {
     if cfg!(target_os = "linux") {
         let mut path = PathBuf::new();
-        path.push("..");
         path.push("usr");
         path.push(".conf");
         path.push("escanor");
         path.push("config");
         path.set_extension("yaml");
 
-        let mut  directory  = PathBuf::from("../usr/.conf/escanor");
+        let mut  directory  = PathBuf::from("/usr/.conf/escanor");
         if !directory.exists() {
             std::fs::create_dir_all(directory);
         }
@@ -36,7 +35,7 @@ pub fn db_file_path() -> Option<PathBuf> {
         path.push("dump");
         path.set_extension("esbd");
 
-        let mut  directory  = PathBuf::from("../usr/lib/escanor");
+        let mut  directory  = PathBuf::from("/usr/lib/escanor");
         if !directory.exists() {
             std::fs::create_dir_all(directory);
         }
