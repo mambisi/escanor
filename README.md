@@ -18,49 +18,23 @@ Escanor is a high performance in memory database written in [rust](http://rust-l
 
 - Client Cli included.
 
-## Installation
-- You can [Download](https://github.com/mambisi/escanor/releases) the prebuilt binary for (Windows,Linux and Mac) on the release page.
-- Build from the source.
+## [Download Binaries](https://github.com/mambisi/escanor/releases)
+[Download]() the latest release from the release page, binaries are available for Windows, Mac and Linux.
 
-### Installing on Ubuntu
-[Download](https://github.com/mambisi/escanor/releases) the Debian package.
-```sh
-$ dpkg -i path/escanor_0.1.0_amd64.deb
-```
-Run the server
-```sh
-$ escaper-server
-```
-Run the server in background and enable able after system reboot.
-```sh
-$ systemctl start escanor-server
-```
-```sh
-$ systemctl enable escanor-server
-```
+## [Install](https://github.com/mambisi/escanor/wiki)
+Installation instructions are available in the [Wiki Page](https://github.com/mambisi/escanor/wiki)
 
-Run the Cli
-```sh
-$ escanor-cli
-```
-### Installing on Windows
-Download the ``escanor_0.1.0_win64.zip`` there are two files ``escanor-server.exe`` and ``escanor-cli.exe`` open ``escanor-server.exe`` then ``escanor-cli.exe``.
+## Run
 
-### Installing on Mac
-Download the ``escanor_0.1.0_osx.zip`` there are two files ``escanor-server`` and ``escanor-cli`` open ``escanor-server`` then ``escanor-cli``.
-
-## Run from Source
-
-```git
+```shell script
 git clone https://github.com/mambisi/escanor.git
 ```
-```git
+```shell script
 cd escanor
 ```
-```git
+```shell script
 cargo run --bin escanor-server
 ```
-```git
+```shell script
 cargo run --bin escanor-cli
 ```
-
