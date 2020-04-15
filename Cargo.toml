@@ -60,6 +60,7 @@ serde_yaml = "0.8"
 jsonpath_lib = "0.2.4"
 resp = "^0.3.6"
 tokio-util = { version = "0.3.1" , features = ["full"]}
+dashmap = { version = "3.11.0" , features = ["serde"]}
 
 [dev-dependencies]
 env_logger = "0.7.1"

@@ -17,6 +17,7 @@ use log::Level::{Info, Debug};
 use glob::Pattern;
 
 extern crate chrono;
+extern crate dashmap;
 
 use serde_json::Value;
 use tokio::time;
@@ -28,13 +29,13 @@ extern crate jsonpath_lib as jsonpath;
 lazy_static! {
     //Load balancing
     static ref SAVE_IN_PROCEES : Arc<RwLock<u8>> = Arc::new(RwLock::new(0));
-    static ref KEYS_REM_EX_HASH : Arc<RwLock<HashMap<String, i64>>> = Arc::new(RwLock::new(HashMap::new()));
-    static ref DELETED_KEYS_LIST : Arc<RwLock<HashSet<String>>> = Arc::new(RwLock::new(HashSet::new()));
+    static ref KEYS_REM_EX_HASH : Arc<DashMap<String, i64>> = Arc::new(DashMap::new());
+    static ref DELETED_KEYS_LIST : Arc<DashSet<String>> = Arc::new(DashSet::new());
     //Data
-    static ref BTREE : Arc<RwLock<BTreeMap<String, ESRecord>>> = Arc::new(RwLock::new(BTreeMap::new()));
-    static ref JSON_BTREE : Arc<RwLock<BTreeMap<String, Value>>> = Arc::new(RwLock::new(BTreeMap::new()));
-    static ref GEO_BTREE : Arc<RwLock<BTreeMap<String, HashSet<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
-    static ref GEO_RTREE : Arc<RwLock<BTreeMap<String, RTree<GeoPoint2D>>>> = Arc::new(RwLock::new(BTreeMap::new()));
+    static ref BTREE : Arc<DashMap<String, ESRecord>> = Arc::new(DashMap::new());
+    static ref JSON_BTREE : Arc<DashMap<String, Value>> = Arc::new(DashMap::new());
+    static ref GEO_BTREE : Arc<DashMap<String, HashSet<GeoPoint2D>>> = Arc::new(DashMap::new());
+    static ref GEO_RTREE : Arc<DashMap<String, RTree<GeoPoint2D>>> = Arc::new(DashMap::new());
     //Time keepers
     static ref LAST_SAVE_TIME : Arc<RwLock<i64>> = Arc::new(RwLock::new(0));
     static ref LAST_SAVE_DURATION : Arc<RwLock<u64>> = Arc::new(RwLock::new(0));
@@ -49,12 +50,14 @@ use tokio::fs::{OpenOptions, File};
 use tokio::time::Instant;
 use std::path::{PathBuf, Path};
 use self::jsonpath::JsonPathError;
+use self::dashmap::{DashMap, DashSet};
+use regex::internal::Input;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Database {
-    btree: BTreeMap<String, ESRecord>,
-    json_btree: BTreeMap<String,Value>,
-    geo_tree: BTreeMap<String, HashSet<GeoPoint2D>>,
+    btree: DashMap<String, ESRecord>,
+    json_btree: DashMap<String, Value>,
+    geo_tree: DashMap<String, HashSet<GeoPoint2D>>,
 }
 
 async fn load_db() {
@@ -86,25 +89,36 @@ async fn load_db() {
         Ok(t) => t,
         Err(_) => { return; }
     };
-    let mut btree: RwLockWriteGuard<BTreeMap<String, ESRecord>> = BTREE.write().unwrap();
-    let mut json_btree: RwLockWriteGuard<BTreeMap<String, Value>> = JSON_BTREE.write().unwrap();
-    let mut geo_btree: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
-    let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
+    let mut btree: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let mut json_btree: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
+    let mut geo_btree: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
+    let mut r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
 
-    json_btree.clone_from(&saved_db.json_btree);
-    btree.clone_from(&saved_db.btree);
-    geo_btree.clone_from(&saved_db.geo_tree);
+   // geo_btree.clone_from(&saved_db.geo_tree);
 
+    &saved_db.geo_tree.iter().for_each(|data| {
+        geo_btree.insert(data.key().to_owned(), data.value().to_owned());
+    }
+    );
 
+    &saved_db.json_btree.iter().for_each(|data| {
+        json_btree.insert(data.key().to_owned(), data.value().to_owned());
+    }
+    );
 
-    geo_btree.iter().for_each(|(k, v)| {
+    &saved_db.btree.iter().for_each(|data| {
+        btree.insert(data.key().to_owned(), data.value().to_owned());
+    }
+    );
+
+    geo_btree.iter().for_each(|data| {
         let mut bulk_geo_hash_load: Vec<GeoPoint2D> = vec![];
 
-        v.iter().for_each(|p| {
+        data.value().iter().for_each(|p| {
             bulk_geo_hash_load.push(p.clone())
         });
 
-        r_map.insert(k.to_owned(), RTree::bulk_load(bulk_geo_hash_load));
+        r_map.insert(data.key().to_owned(), RTree::bulk_load(bulk_geo_hash_load));
     });
 
     let load_elapsed: Duration = instant.elapsed();
@@ -112,14 +126,14 @@ async fn load_db() {
 }
 
 async fn save_db() {
-    let mut json_btree_copy = BTreeMap::<String, Value>::new();
-    let mut btree_copy = BTreeMap::<String, ESRecord>::new();
-    let mut geo_btree_copy = BTreeMap::<String, HashSet<GeoPoint2D>>::new();
+    let mut json_btree_copy = DashMap::<String, Value>::new();
+    let mut btree_copy = DashMap::<String, ESRecord>::new();
+    let mut geo_btree_copy = DashMap::<String, HashSet<GeoPoint2D>>::new();
 
     {
-        let json_btree: RwLockReadGuard<BTreeMap<String, Value>> = JSON_BTREE.read().unwrap();
-        let btree: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
-        let geo_btree: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+        let json_btree: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
+        let btree: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+        let geo_btree: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
 
         json_btree_copy.clone_from(&json_btree);
         btree_copy.clone_from(&btree);
@@ -130,7 +144,7 @@ async fn save_db() {
     let db = Database {
         btree: btree_copy,
         geo_tree: geo_btree_copy,
-        json_btree : json_btree_copy
+        json_btree: json_btree_copy,
     };
 
     let content = match rmp_serde::encode::to_vec(&db) {
@@ -179,11 +193,14 @@ pub async fn init_db() {
             interval.tick().await;
             remove_expired_keys();
             let current_ts = Utc::now().timestamp();
-            let map: RwLockReadGuard<HashMap<String, i64>> = KEYS_REM_EX_HASH.read().unwrap();
+            let map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
+            //let map = map.into_read_only();
             if map.is_empty() {
                 continue;
             }
-            for (key, exp_time) in map.iter() {
+            for rec in map.iter() {
+                let exp_time = rec.value();
+                let key = rec.key();
                 if exp_time.to_owned() <= current_ts {
                     let del_cmd = DelCmd {
                         arg_key: key.to_owned()
@@ -202,7 +219,7 @@ pub async fn init_db() {
             interval.tick().await;
             let current_ts = Utc::now().timestamp();
 
-            let mut map: RwLockWriteGuard<HashSet<String>> = DELETED_KEYS_LIST.write().unwrap();
+            let mut map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
             map.clear()
         };
     });
@@ -230,10 +247,10 @@ pub async fn init_db() {
 }
 
 fn remove_expired_keys() {
-    let map: RwLockReadGuard<HashSet<String>> = DELETED_KEYS_LIST.read().unwrap();
-    let mut k_map: RwLockWriteGuard<HashMap<String, i64>> = KEYS_REM_EX_HASH.write().unwrap();
-    map.iter().for_each(|key| {
-        k_map.remove(key);
+    let map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
+    let mut k_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
+    map.iter().for_each(|data| {
+        k_map.remove(data.key());
     });
 }
 
@@ -251,9 +268,10 @@ pub struct ESRecord {
     pub data_type: DataType,
 }
 
+
 pub fn set(cmd: &SetCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
-    let mut map: RwLockWriteGuard<BTreeMap<String, ESRecord>> = BTREE.write().unwrap();
+    let mut map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
 
 
     let record = &ESRecord {
@@ -264,7 +282,7 @@ pub fn set(cmd: &SetCmd) -> String {
 
     if cmd.arg_exp > 0 {
         let timestamp = Utc::now().timestamp();
-        let mut rem_map: RwLockWriteGuard<HashMap<String, i64>> = KEYS_REM_EX_HASH.write().unwrap();
+        let mut rem_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
         rem_map.insert(cmd.arg_key.to_owned(), (cmd.arg_exp.to_owned() as i64 + timestamp));
     }
 
@@ -274,13 +292,12 @@ pub fn set(cmd: &SetCmd) -> String {
 }
 
 pub fn get(cmd: &GetCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
+    let map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
     let key = &cmd.arg_key.to_owned();
-
 
     return match map.get(key) {
         Some(r) => {
-            print_record(r)
+            print_record(r.value())
         }
         None => {
             print_err("KEY_NOT_FOUND")
@@ -289,10 +306,9 @@ pub fn get(cmd: &GetCmd) -> String {
 }
 
 pub fn exists(cmd: &ExistsCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
+    let map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
 
     let mut found_count: i64 = 0;
-
     for key in &cmd.keys {
         if map.contains_key(key) {
             found_count += 1;
@@ -303,18 +319,19 @@ pub fn exists(cmd: &ExistsCmd) -> String {
 }
 
 pub fn info(cmd: &InfoCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
-    let key_count = map.keys().count();
+    let map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    //let map = map.into_read_only();
+    let key_count = map.len();
     let info = format!("db0:keys={}\r\n", key_count);
     print_string(&info)
 }
 
 pub fn del(cmd: &DelCmd) -> String {
-    let mut map: RwLockWriteGuard<BTreeMap<String, ESRecord>> = BTREE.write().unwrap();
+    let mut map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
     let key = &cmd.arg_key.to_owned();
     return match map.remove(key) {
         Some(r) => {
-            let mut map: RwLockWriteGuard<HashSet<String>> = DELETED_KEYS_LIST.write().unwrap();
+            let mut map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
             map.insert(key.to_owned());
             print_ok()
         }
@@ -325,7 +342,8 @@ pub fn del(cmd: &DelCmd) -> String {
 }
 
 pub fn keys(cmd: &KeysCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, ESRecord>> = BTREE.read().unwrap();
+    let map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    //let map = map.into_read_only();
     let pattern_marcher = match Pattern::new(&cmd.pattern) {
         Ok(t) => t,
         Err(e) => {
@@ -333,27 +351,30 @@ pub fn keys(cmd: &KeysCmd) -> String {
         }
     };
 
-    let mut keys: Vec<&String> = vec![];
+    let mut keys: Vec<String> = vec![];
 
-    for key in map.keys() {
-        if pattern_marcher.matches(key) {
-            keys.push(key)
+    for item  in map.iter() {
+        //let key = .to_owned();
+
+        if pattern_marcher.matches(item.key()) {
+            keys.push(item.key().clone())
         }
     }
-    print_string_arr(keys)
+
+    print_arr(keys)
 }
 
 pub fn geo_add(cmd: &GeoAddCmd) -> String {
-    let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
+    let mut r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
 
-    let mut map: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
+    let mut map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
 
 
     let mut point_map: HashSet<GeoPoint2D> = HashSet::new();
     if map.contains_key(&cmd.arg_key) {
         //update previous insertion
         let p = map.get_mut(&cmd.arg_key).unwrap();
-        point_map = point_map.union(p).cloned().collect();
+        point_map = point_map.union(p.value()).cloned().collect();
     }
 
     let mut is_valid_geo_point = true;
@@ -407,12 +428,12 @@ pub fn geo_add(cmd: &GeoAddCmd) -> String {
 }
 
 pub fn geo_hash(cmd: &GeoHashCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
     let empty_string = String::new();
 
     let geo_point_hash_set = match map.get(&cmd.arg_key) {
-        Some(m) => m,
+        Some(m) => m.value().to_owned(),
         None => {
             return print_err("KEY_NOT_FOUND");
         }
@@ -441,12 +462,12 @@ pub fn geo_hash(cmd: &GeoHashCmd) -> String {
 }
 
 pub fn geo_dist(cmd: &GeoDistCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
 
 
     let geo_point_hash_set = match map.get(&cmd.arg_key) {
-        Some(m) => m,
+        Some(m) => m.value().to_owned(),
         None => {
             return print_err("KEY_NOT_FOUND");
         }
@@ -487,11 +508,11 @@ pub fn geo_dist(cmd: &GeoDistCmd) -> String {
 }
 
 pub fn geo_radius(cmd: &GeoRadiusCmd) -> String {
-    let r_map: RwLockReadGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.read().unwrap();
+    let r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
 
     let geo_points_rtree = match r_map.get(&cmd.arg_key) {
-        Some(m) => m,
+        Some(m) => m.value().to_owned(),
         None => {
             return print_err("KEY_NOT_FOUND");
         }
@@ -539,12 +560,12 @@ pub fn geo_radius(cmd: &GeoRadiusCmd) -> String {
 }
 
 pub fn geo_radius_by_member(cmd: &GeoRadiusByMemberCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
 
 
     let geo_point_hash_set = match map.get(&cmd.arg_key) {
-        Some(m) => m,
+        Some(m) => m.value().to_owned(),
         None => {
             return print_err("KEY_NOT_FOUND");
         }
@@ -579,12 +600,12 @@ pub fn geo_radius_by_member(cmd: &GeoRadiusByMemberCmd) -> String {
 
 
 pub fn geo_pos(cmd: &GeoPosCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
     //let default_hash: HashSet<GeoPoint2D> = HashSet::new();
 
 
     let geo_point_hash_set = match map.get(&cmd.arg_key) {
-        Some(m) => m,
+        Some(m) => m.value().to_owned(),
         None => {
             return print_err("KEY_NOT_FOUND");
         }
@@ -614,8 +635,8 @@ pub fn geo_pos(cmd: &GeoPosCmd) -> String {
 }
 
 pub fn geo_del(cmd: &GeoDelCmd) -> String {
-    let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
-    let mut map: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
+    let mut r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
+    let mut map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
 
     if !(r_map.contains_key(&cmd.arg_key) && map.contains_key(&cmd.arg_key)) {
         return print_err("KEY_NOT_FOUND");
@@ -627,15 +648,15 @@ pub fn geo_del(cmd: &GeoDelCmd) -> String {
 }
 
 pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
-    let mut r_map: RwLockWriteGuard<BTreeMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.write().unwrap();
+    let mut r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
 
-    let mut map: RwLockWriteGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.write().unwrap();
+    let mut map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
 
     if !(r_map.contains_key(&cmd.arg_key) && map.contains_key(&cmd.arg_key)) {
         return print_err("KEY_NOT_FOUND");
     }
-    let geo_point_hash_set = match map.get_mut(&cmd.arg_key) {
-        Some(m) => m,
+    let mut geo_point_hash_set = match map.get(&cmd.arg_key) {
+        Some(m) => m.value().to_owned(),
         None => {
             return print_err("KEY_NOT_FOUND");
         }
@@ -665,7 +686,7 @@ pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
         bulk_geo_hash_load.push(p.clone())
     });
 
-    point_map = point_map.union(geo_point_hash_set).cloned().collect();
+    point_map = point_map.union(&geo_point_hash_set).cloned().collect();
 
 
     map.insert(cmd.arg_key.to_owned(), point_map);
@@ -675,12 +696,12 @@ pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
 }
 
 pub fn geo_json(cmd: &GeoJsonCmd) -> String {
-    let map: RwLockReadGuard<BTreeMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.read().unwrap();
+    let map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
 
     let empty_string = String::new();
 
     let geo_point_hash_set = match map.get(&cmd.arg_key) {
-        Some(m) => m,
+        Some(m) => m.value().to_owned(),
         None => {
             return print_err("KEY_NOT_FOUND");
         }
@@ -708,31 +729,31 @@ pub fn geo_json(cmd: &GeoJsonCmd) -> String {
 
 // JSET, JGET, JDEL, JPATH, JMERGE
 pub fn jset(cmd: &JSetCmd) -> String {
-    let mut map: RwLockWriteGuard<BTreeMap<String, Value>> = JSON_BTREE.write().unwrap();
+    let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
 
 
-    let value: Value = match serde_json::from_str(&cmd.arg_value) {
+    let json_value: Value = match serde_json::from_str(&cmd.arg_value) {
         Ok(t) => t,
         Err(_) => { return print_err("ERR invalid json"); }
     };
 
-    map.insert(cmd.arg_key.to_owned(), value);
+    map.insert(cmd.arg_key.to_owned(), json_value);
 
     print_ok()
 }
 
 pub fn jmerge(cmd: &JMergeCmd) -> String {
     let null_value = Value::Null;
-    let mut map: RwLockWriteGuard<BTreeMap<String, Value>> = JSON_BTREE.write().unwrap();
+    let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
 
     let mut value: Value = match serde_json::from_str(&cmd.arg_value) {
         Ok(t) => t,
         Err(_) => { return print_err("ERR invalid json"); }
     };
 
-    let prev_value = match map.get(&cmd.arg_key) {
-        None => { &null_value }
-        Some(v) => { v }
+    let prev_value : Value = match map.get(&cmd.arg_key) {
+        None => { null_value }
+        Some(v) => { v.value().to_owned() }
     };
 
     if prev_value.is_null() {
@@ -740,18 +761,18 @@ pub fn jmerge(cmd: &JMergeCmd) -> String {
         return print_ok();
     }
 
-    util::merge(&mut value, prev_value);
+    util::merge(&mut value, &prev_value);
     map.insert(cmd.arg_key.to_owned(), value);
     print_ok()
 }
 
 pub fn jget(cmd: &JGetCmd) -> String {
     let null_value = Value::Null;
-    let map: RwLockReadGuard<BTreeMap<String, Value>> = JSON_BTREE.read().unwrap();
+    let map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
 
-    let value = match map.get(&cmd.arg_key) {
-        None => { &null_value }
-        Some(v) => { v }
+    let value :Value = match map.get(&cmd.arg_key) {
+        None => { null_value }
+        Some(v) => { v.value().to_owned() }
     };
 
     if value.is_null() {
@@ -762,22 +783,22 @@ pub fn jget(cmd: &JGetCmd) -> String {
 
 pub fn jpath(cmd: &JPathCmd) -> String {
     let null_value = Value::Null;
-    let map: RwLockReadGuard<BTreeMap<String, Value>> = JSON_BTREE.read().unwrap();
+    let map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
 
     let value = match map.get(&cmd.arg_key) {
-        None => { &null_value }
-        Some(v) => { v }
+        None => { null_value }
+        Some(v) => { v.value().to_owned() }
     };
 
     if value.is_null() {
         return print_string(&"".to_owned());
     }
-    let json_result = match jsonpath::select(value, cmd.arg_selector.as_str()) {
+    let json_result = match jsonpath::select(&value, cmd.arg_selector.as_str()) {
         Ok(v) => { v }
         Err(_) => { return print_string(&String::from("")); }
     };
 
-    let mut j_strings : Vec<String> = vec![];
+    let mut j_strings: Vec<String> = vec![];
 
     for v in json_result {
         j_strings.push(v.to_owned().to_string())
@@ -788,7 +809,7 @@ pub fn jpath(cmd: &JPathCmd) -> String {
 
 pub fn jdel(cmd: &JDelCmd) -> String {
     let null_value = Value::Null;
-    let mut map: RwLockWriteGuard<BTreeMap<String, Value>> = JSON_BTREE.write().unwrap();
+    let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
     map.remove(&cmd.arg_key);
     print_ok()
 }
