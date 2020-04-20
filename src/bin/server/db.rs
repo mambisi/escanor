@@ -27,6 +27,19 @@ use chrono::{Date, Utc};
 extern crate jsonpath_lib as jsonpath;
 extern crate json_dotpath;
 
+
+use rmp_serde;
+use rmp_serde::encode::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::fs::{OpenOptions, File};
+use tokio::time::Instant;
+use std::path::{PathBuf, Path};
+use self::jsonpath::JsonPathError;
+use self::dashmap::{DashMap, DashSet};
+use regex::internal::Input;
+use self::dashmap::mapref::one::RefMut;
+use json_dotpath::DotPaths;
+
 lazy_static! {
     //Load balancing
     static ref SAVE_IN_PROCEES : Arc<RwLock<u8>> = Arc::new(RwLock::new(0));
@@ -44,24 +57,23 @@ lazy_static! {
 }
 
 
-use rmp_serde;
-use rmp_serde::encode::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::fs::{OpenOptions, File};
-use tokio::time::Instant;
-use std::path::{PathBuf, Path};
-use self::jsonpath::JsonPathError;
-use self::dashmap::{DashMap, DashSet};
-use regex::internal::Input;
-use self::dashmap::mapref::one::RefMut;
-use json_dotpath::DotPaths;
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Database {
     btree: DashMap<String, ESRecord>,
     json_btree: DashMap<String, Value>,
     geo_tree: DashMap<String, HashSet<GeoPoint2D>>,
 }
+
+fn increment_mutation_counter(){
+    let mut mutation_counter: RwLockWriteGuard<u64> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
+    *mutation_counter += 1;
+}
+
+fn reset_mutation_counter(){
+    let mut mutation_counter: RwLockWriteGuard<u64> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
+    *mutation_counter = 0;
+}
+
 
 async fn load_db() {
     let path = match file_dirs::db_file_path() {
@@ -171,6 +183,7 @@ async fn save_db() {
     };
     match file.write_all(&content).await {
         Ok(_) => {
+            reset_mutation_counter();
             let mut last_save_time: RwLockWriteGuard<i64> = LAST_SAVE_TIME.write().unwrap();
             *last_save_time = Utc::now().timestamp();
             return;
@@ -279,6 +292,13 @@ pub fn last_save(cmd: &LastSaveCmd) -> String {
     print_integer(*last_save_time)
 }
 
+pub fn bg_save(cmd: &BGSaveCmd) -> String{
+    tokio::task::spawn(async {
+        save_db();
+    });
+    print_ok()
+}
+
 
 pub fn set(cmd: &SetCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
@@ -299,6 +319,7 @@ pub fn set(cmd: &SetCmd) -> String {
 
     map.insert(record.key.to_owned(), record.to_owned());
 
+    increment_mutation_counter();
     print_ok()
 }
 
@@ -344,6 +365,7 @@ pub fn del(cmd: &DelCmd) -> String {
         Some(r) => {
             let mut map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
             map.insert(key.to_owned());
+            increment_mutation_counter();
             print_ok()
         }
         None => {
@@ -435,6 +457,7 @@ pub fn geo_add(cmd: &GeoAddCmd) -> String {
     map.insert(cmd.arg_key.to_owned(), point_map);
     r_map.insert(cmd.arg_key.to_owned(), RTree::bulk_load(bulk_geo_hash_load));
 
+    increment_mutation_counter();
     print_ok()
 }
 
@@ -655,6 +678,7 @@ pub fn geo_del(cmd: &GeoDelCmd) -> String {
     r_map.remove(&cmd.arg_key);
     map.remove(&cmd.arg_key);
 
+    increment_mutation_counter();
     print_ok()
 }
 
@@ -687,6 +711,7 @@ pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
     if geo_point_hash_set.is_empty() {
         map.remove(&cmd.arg_key);
         r_map.remove(&cmd.arg_key);
+        increment_mutation_counter();
         return print_ok();
     }
 
@@ -702,7 +727,7 @@ pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
 
     map.insert(cmd.arg_key.to_owned(), point_map);
     r_map.insert(cmd.arg_key.to_owned(), RTree::bulk_load(bulk_geo_hash_load));
-
+    increment_mutation_counter();
     print_ok()
 }
 
@@ -749,7 +774,7 @@ pub fn jset_raw(cmd: &JSetRawCmd) -> String {
     };
 
     map.insert(cmd.arg_key.to_owned(), json_value);
-
+    increment_mutation_counter();
     print_ok()
 }
 
@@ -772,7 +797,7 @@ pub fn jset(cmd: &JSetCmd) -> String {
                 return print_err("Error Saving values");
             }
             map.insert(cmd.arg_key.to_owned(), json);
-
+            increment_mutation_counter();
             return print_ok();
         }
         Some(mut j) => {
@@ -791,6 +816,7 @@ pub fn jset(cmd: &JSetCmd) -> String {
                 return print_err("Error some values");
             }
             let string = j.to_string();
+            increment_mutation_counter();
             print_ok()
         }
     };
@@ -812,11 +838,13 @@ pub fn jmerge(cmd: &JMergeCmd) -> String {
 
     if prev_value.is_null() {
         map.insert(cmd.arg_key.to_owned(), value);
+        increment_mutation_counter();
         return print_ok();
     }
 
     util::merge(&mut value, &prev_value);
     map.insert(cmd.arg_key.to_owned(), value);
+    increment_mutation_counter();
     print_ok()
 }
 
@@ -882,7 +910,8 @@ pub fn jdel(cmd: &JDelCmd) -> String {
     print_ok()
 }
 
-pub fn jincrby(cmd: &JIncrByCmd) -> String {
+
+pub fn jincr_by(cmd: &JIncrByCmd) -> String {
     let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
     return match map.get_mut(&cmd.arg_key) {
         None => {
@@ -895,6 +924,7 @@ pub fn jincrby(cmd: &JIncrByCmd) -> String {
             if path_to_incr.is_null() {
                 let new_value = json!(cmd.arg_increment_value);
                 json.dot_set(&cmd.arg_path.to_owned(), new_value.clone());
+                increment_mutation_counter();
                 return print_integer(new_value.as_i64().unwrap());
             }
             let new_value = if path_to_incr.is_number() {
@@ -919,6 +949,7 @@ pub fn jincrby(cmd: &JIncrByCmd) -> String {
             }
             return match json.dot_set(&cmd.arg_path, new_value.clone()) {
                 Ok(_) => {
+                    increment_mutation_counter();
                     print_integer(new_value.as_i64().unwrap())
                 }
                 Err(e) => {
@@ -929,7 +960,7 @@ pub fn jincrby(cmd: &JIncrByCmd) -> String {
     };
 }
 
-pub fn jincrbyfloat(cmd: &JIncrByFloatCmd) -> String {
+pub fn jincr_by_float(cmd: &JIncrByFloatCmd) -> String {
     let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
     return match map.get_mut(&cmd.arg_key) {
         None => {
@@ -942,6 +973,7 @@ pub fn jincrbyfloat(cmd: &JIncrByFloatCmd) -> String {
             if path_to_incr.is_null() {
                 let new_value = json!(cmd.arg_increment_value);
                 json.dot_set(&cmd.arg_path.to_owned(), new_value.clone());
+                increment_mutation_counter();
                 return print_str(&new_value.to_string());
             }
             let new_value = if path_to_incr.is_number() {
@@ -964,6 +996,7 @@ pub fn jincrbyfloat(cmd: &JIncrByFloatCmd) -> String {
             }
             return match json.dot_set(&cmd.arg_path, new_value.clone()) {
                 Ok(_) => {
+                    increment_mutation_counter();
                     print_str(&new_value.to_string())
                 }
                 Err(e) => {
@@ -973,3 +1006,4 @@ pub fn jincrbyfloat(cmd: &JIncrByFloatCmd) -> String {
         }
     };
 }
+

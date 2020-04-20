@@ -257,6 +257,14 @@ impl Command for LastSaveCmd {
         db::last_save(self)
     }
 }
+#[derive(Debug)]
+pub struct BGSaveCmd;
+impl Command for BGSaveCmd {
+    fn execute(&self) -> String {
+        db::bg_save(self)
+    }
+}
+
 
 #[derive(Debug)]
 pub struct InfoCmd;
@@ -341,7 +349,7 @@ pub struct JIncrByCmd {
 }
 impl Command for JIncrByCmd {
     fn execute(&self) -> String {
-        db::jincrby(self)
+        db::jincr_by(self)
     }
 }
 
@@ -354,7 +362,7 @@ pub struct JIncrByFloatCmd {
 }
 impl Command for JIncrByFloatCmd {
     fn execute(&self) -> String {
-        db::jincrbyfloat(self)
+        db::jincr_by_float(self)
     }
 }
 
