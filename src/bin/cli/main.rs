@@ -26,6 +26,14 @@ use std::str::FromStr;
 use cookie_factory::lib::std::io::Error;
 use std::sync::Arc;
 
+extern crate serde;
+extern crate serde_json;
+extern crate colored_json;
+
+use serde_json::{Value as JsonValue};
+use colored_json::to_colored_json_auto;
+
+
 const DEMO_FN_SEQ: &str = "\n^c";
 
 fn main() -> io::Result<()> {
@@ -141,7 +149,18 @@ fn run_program(client: &mut Client, interface: &mut Interface<DefaultTerminal>) 
                 let ref_commands: Vec<&str> = commands.iter().map(AsRef::as_ref).collect();
                 match client.cmd(&ref_commands) {
                     Ok(v) => {
-                        println!("{}", v.to_beautify_string());
+                        let va = v.to_beautify_string();
+                        if cmd.to_uppercase() == "JGET" || cmd.to_uppercase() == "GEOJSON" || cmd.to_uppercase() == "JPATH" {
+                            let jva = va.to_owned();
+                            let json : JsonValue = serde_json::from_str(&jva.trim_matches(&['"'] as &[_])).unwrap_or(JsonValue::Null);
+                            if json.is_null() {
+                                println!("{}", va);
+                            }else {
+                                println!("{}",to_colored_json_auto(&json).unwrap_or(va.to_owned()))
+                            }
+                        }else {
+                            println!("{}", va.to_owned());
+                        }
                     }
                     Err(_e) => {
                         break;

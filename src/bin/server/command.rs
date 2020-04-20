@@ -11,6 +11,7 @@ use serde::export::Option::Some;
 use crate::unit_conv::Units;
 use nom::character::complete::char;
 use redis_protocol::types::Frame;
+use serde_json::Value;
 
 pub fn compile_frame (frame : Frame) -> Result<Box<dyn Command>, error::SyntaxError> {
     let tokens: Vec<String> = tokenizer::generate_token_from_frame(frame);
@@ -183,9 +184,18 @@ pub struct InfoCmd;
 pub struct PingCmd;
 
 #[derive(Debug)]
-pub struct JSetCmd {
+pub struct JSetRawCmd {
     pub arg_key: String,
     pub arg_value: String
+}
+
+
+pub type JSetArgItem = (String, Value);
+
+#[derive(Debug)]
+pub struct JSetCmd {
+    pub arg_key: String,
+    pub arg_set_items : Vec<JSetArgItem>
 }
 
 #[derive(Debug)]
@@ -195,7 +205,8 @@ pub struct JMergeCmd {
 }
 #[derive(Debug)]
 pub struct JGetCmd {
-    pub arg_key: String
+    pub arg_key: String,
+    pub arg_dot_path : Option<String>
 }
 #[derive(Debug)]
 pub struct JPathCmd {
@@ -304,6 +315,11 @@ impl Command for GeoJsonCmd {
 }
 
 
+impl Command for JSetRawCmd {
+    fn execute(&self) -> String {
+        db::jset_raw(self)
+    }
+}
 impl Command for JSetCmd {
     fn execute(&self) -> String {
         db::jset(self)

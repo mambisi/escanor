@@ -28,6 +28,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ansi_term"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2"
+dependencies = [
+ "winapi 0.3.8",
+]
+
+[[package]]
 name = "app_dirs2"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -233,7 +242,7 @@ version = "2.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5067f5bb2d80ef5d68b4c87db81601f0b75bca627bc2ef76b141d7b846a3c6d9"
 dependencies = [
- "ansi_term",
+ "ansi_term 0.11.0",
  "atty",
  "bitflags",
  "strsim",
@@ -261,6 +270,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "colored_json"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd32eb54d016e203b7c2600e3a7802c75843a92e38ccc4869aefeca21771a64"
+dependencies = [
+ "ansi_term 0.12.1",
+ "atty",
+ "libc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -527,6 +549,7 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
+ "colored_json",
  "console",
  "cookie-factory 0.3.1",
  "criterion",
@@ -536,6 +559,7 @@ dependencies = [
  "futures",
  "geohash",
  "glob",
+ "json_dotpath",
  "jsonpath_lib",
  "lazy_static",
  "linefeed",
@@ -873,6 +897,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a27d435371a2fa5b6d2b028a74bbdb1234f308da363226a2854ca3ff8ba7055"
 dependencies = [
  "wasm-bindgen",
+]
+
+[[package]]
+name = "json_dotpath"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbe7de78dbf78b5eb4108745a13678c142db464860431a2063cc556768e07be4"
+dependencies = [
+ "failure",
+ "failure_derive",
+ "serde",
+ "serde_derive",
+ "serde_json",
 ]
 
 [[package]]
@@ -1300,7 +1337,7 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed8d1e63042e889b85228620629b51c011d380eed2c7e0015f8a644def280c28"
 dependencies = [
- "ansi_term",
+ "ansi_term 0.11.0",
  "chrono",
  "env_logger 0.5.13",
  "log",

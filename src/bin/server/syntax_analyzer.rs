@@ -1,6 +1,8 @@
 use crate::command::*;
 use crate::{error, util, unit_conv, db};
 use tokio::macros::support::Pin;
+use serde_json::{Value, Number};
+use serde_json::map::Values;
 
 pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, error::SyntaxError> {
     let empty_string: String = String::from("");
@@ -309,15 +311,51 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
             arg_key: arg_key.to_owned(),
             items: items_after_key,
         }));
-    } else if cmd == "jset" {
+    } else if cmd == "jsetr" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
 
         let arg_value = itr.next().unwrap_or(&empty_string);
-        if arg_key.is_empty() { return Err(error::SyntaxError); }
-        return Ok(Box::new(JSetCmd {
+        if arg_value.is_empty() { return Err(error::SyntaxError); }
+        return Ok(Box::new(JSetRawCmd {
             arg_key: arg_key.to_owned(),
             arg_value: arg_value.to_owned(),
+        }));
+    } else if cmd == "jset" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let mut items_after_key: Vec<&String> = vec![];
+
+        while let Some(i) = itr.next() {
+            items_after_key.push(i);
+        }
+        if items_after_key.is_empty() {
+            return Err(error::SyntaxError);
+        }
+        if items_after_key.len() % 2 != 0 {
+            return Err(error::SyntaxError);
+        }
+        //split items_after_key in arrays of [3, &String]
+        let mut geo_point_chunks = items_after_key.chunks_exact(2);
+
+        let mut items: Vec<JSetArgItem> = vec![];
+
+        while let Some(c) = geo_point_chunks.next() {
+            let dot_path = c[0];
+            let value_string = c[1];
+
+            if util::is_numeric(value_string) {
+                items.push((dot_path.to_owned(), Value::from(value_string.parse::<f64>().unwrap())));
+            } else {
+                items.push((dot_path.to_owned(), Value::String(value_string.to_owned())));
+            }
+        }
+
+
+        return Ok(Box::new(JSetCmd {
+            arg_key: arg_key.to_owned(),
+            arg_set_items: items,
         }));
     } else if cmd == "jmerge" {
         let arg_key = itr.next().unwrap_or(&empty_string);
@@ -332,9 +370,11 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
     } else if cmd == "jget" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
+        let arg_value = itr.next().unwrap_or(&empty_string);
 
         return Ok(Box::new(JGetCmd {
-            arg_key: arg_key.to_owned()
+            arg_key: arg_key.to_owned(),
+            arg_dot_path: if arg_value.is_empty() { None } else { Some(arg_value.to_owned()) },
         }));
     } else if cmd == "jpath" {
         let arg_key = itr.next().unwrap_or(&empty_string);
@@ -346,7 +386,7 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
             arg_key: arg_key.to_owned(),
             arg_selector: arg_selector.to_owned(),
         }));
-    }else if cmd == "jdel" {
+    } else if cmd == "jdel" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
 

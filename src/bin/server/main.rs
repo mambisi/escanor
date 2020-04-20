@@ -24,6 +24,7 @@ mod config;
 mod syntax_analyzer;
 mod file_dirs;
 mod codec;
+mod json;
 
 use clap::{App, Arg};
 

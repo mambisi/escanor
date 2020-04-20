@@ -33,23 +33,7 @@ use redis_protocol::prelude::*;
 use redis_protocol::types::Frame;
 use crate::error::SyntaxError;
 use crate::command::Command;
-/*
- Ok(cmd) => {
-                            let response = cmd.execute();
-                            let buf: BytesMut = BytesMut::from(response.as_bytes());
-                            match decode_bytes(&buf) {
-                                Ok((f, c)) => {
-                                    lines.send(f.unwrap_or(Frame::SimpleString("Ok".to_owned()))).await;
-                                }
-                                Err(e) => {
-                                    lines.send(Frame::Error("Server error".to_owned())).await;
-                                }
-                            };
-                        }
-                        Err(e) => {
-                            lines.send(Frame::Error("Syntax error".to_owned())).await;
-                        }
-*/
+
 
 fn process_socket(mut socket: TcpStream){
     // do work with socket here

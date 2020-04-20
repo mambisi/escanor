@@ -25,6 +25,7 @@ use std::time::{Duration, SystemTime};
 use chrono::{Date, Utc};
 
 extern crate jsonpath_lib as jsonpath;
+extern crate json_dotpath;
 
 lazy_static! {
     //Load balancing
@@ -52,6 +53,8 @@ use std::path::{PathBuf, Path};
 use self::jsonpath::JsonPathError;
 use self::dashmap::{DashMap, DashSet};
 use regex::internal::Input;
+use self::dashmap::mapref::one::RefMut;
+use json_dotpath::DotPaths;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Database {
@@ -94,7 +97,7 @@ async fn load_db() {
     let mut geo_btree: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
     let mut r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
 
-   // geo_btree.clone_from(&saved_db.geo_tree);
+    // geo_btree.clone_from(&saved_db.geo_tree);
 
     &saved_db.geo_tree.iter().for_each(|data| {
         geo_btree.insert(data.key().to_owned(), data.value().to_owned());
@@ -353,7 +356,7 @@ pub fn keys(cmd: &KeysCmd) -> String {
 
     let mut keys: Vec<String> = vec![];
 
-    for item  in map.iter() {
+    for item in map.iter() {
         //let key = .to_owned();
 
         if pattern_marcher.matches(item.key()) {
@@ -728,7 +731,7 @@ pub fn geo_json(cmd: &GeoJsonCmd) -> String {
 }
 
 // JSET, JGET, JDEL, JPATH, JMERGE
-pub fn jset(cmd: &JSetCmd) -> String {
+pub fn jset_raw(cmd: &JSetRawCmd) -> String {
     let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
 
 
@@ -742,6 +745,49 @@ pub fn jset(cmd: &JSetCmd) -> String {
     print_ok()
 }
 
+pub fn jset(cmd: &JSetCmd) -> String {
+    let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
+
+    return match map.get_mut(&cmd.arg_key) {
+        None => {
+            let mut ers: Vec<json_dotpath::Error> = vec![];
+            let mut json = Value::Null;
+            for (path, value) in &cmd.arg_set_items {
+                match json.dot_set(path, value.to_owned()) {
+                    Ok(t) => {}
+                    Err(e) => {
+                        ers.push(e)
+                    }
+                };
+            }
+            if !ers.is_empty() {
+                return print_err("Error Saving values");
+            }
+            map.insert(cmd.arg_key.to_owned(), json);
+
+            return print_ok();
+        }
+        Some(mut j) => {
+            let mut ers: Vec<json_dotpath::Error> = vec![];
+            let mut json = j.value_mut();
+            for (path, value) in &cmd.arg_set_items {
+                //json.dot_set(&cmd.arg_dot_path, cmd.arg_json_value.clone());
+                match json.dot_set(&path, value.to_owned()) {
+                    Ok(t) => {}
+                    Err(e) => {
+                        ers.push(e)
+                    }
+                };
+            }
+            if !ers.is_empty() {
+                return print_err("Error some values");
+            }
+            let string = j.to_string();
+            print_ok()
+        }
+    };
+}
+
 pub fn jmerge(cmd: &JMergeCmd) -> String {
     let null_value = Value::Null;
     let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
@@ -751,7 +797,7 @@ pub fn jmerge(cmd: &JMergeCmd) -> String {
         Err(_) => { return print_err("ERR invalid json"); }
     };
 
-    let prev_value : Value = match map.get(&cmd.arg_key) {
+    let prev_value: Value = match map.get(&cmd.arg_key) {
         None => { null_value }
         Some(v) => { v.value().to_owned() }
     };
@@ -770,13 +816,28 @@ pub fn jget(cmd: &JGetCmd) -> String {
     let null_value = Value::Null;
     let map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
 
-    let value :Value = match map.get(&cmd.arg_key) {
+    let value: Value = match map.get(&cmd.arg_key) {
         None => { null_value }
         Some(v) => { v.value().to_owned() }
     };
 
     if value.is_null() {
         return print_string(&"".to_owned());
+    }
+    if let Some(t) = &cmd.arg_dot_path {
+        let dot_path_value = value.dot_get::<Value>(t).unwrap_or(Some(Value::Null)).unwrap();
+        return match dot_path_value {
+            Value::String(s) => {
+                print_string(&s)
+            }
+            Value::Number(n) => {
+                print_string(&n.to_string())
+            }
+            v => {
+                print_string(&v.to_string())
+            }
+        }
+
     }
     print_string(&value.to_string())
 }
