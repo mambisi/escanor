@@ -64,7 +64,7 @@ pub trait Command {
     fn execute(&self) -> String;
 }
 
-// Grammar > set [key] [value] ex [exp]
+// Key value Commands
 #[derive(Debug)]
 pub struct SetCmd {
     pub arg_key: String,
@@ -72,13 +72,64 @@ pub struct SetCmd {
     pub arg_value: String,
     pub arg_exp: u32,
 }
+impl Command for SetCmd {
+    fn execute(&self) -> String {
+        db::set(self)
+    }
+}
 
+#[derive(Debug)]
+pub struct GetCmd {
+    pub arg_key: String
+}
+impl Command for GetCmd {
+    fn execute(&self) -> String {
+        db::get(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct DelCmd {
+    pub arg_key: String
+}
+impl Command for DelCmd {
+    fn execute(&self) -> String {
+        db::del(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct KeysCmd {
+    pub pattern: String
+}
+impl Command for KeysCmd {
+    fn execute(&self) -> String {
+        db::keys(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct ExistsCmd {
+    pub keys: Vec<String>,
+}
+impl Command for ExistsCmd {
+    fn execute(&self) -> String {
+        db::exists(self)
+    }
+}
+//
+
+// Geo Spatial Commands
 pub type CmdGeoItem = (f64, f64, String);
-
 #[derive(Debug)]
 pub struct GeoAddCmd {
     pub arg_key: String,
     pub items: Vec<CmdGeoItem>,
+}
+impl Command for GeoAddCmd {
+    fn execute(&self) -> String {
+        db::geo_add(self)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -87,7 +138,6 @@ pub enum ArgOrder {
     DESC,
     UNSPECIFIED,
 }
-
 #[derive(Debug)]
 pub struct GeoRadiusCmd {
     pub arg_key: String,
@@ -97,7 +147,11 @@ pub struct GeoRadiusCmd {
     pub arg_unit: Units,
     pub arg_order: ArgOrder,
 }
-
+impl Command for GeoRadiusCmd {
+    fn execute(&self) -> String {
+        db::geo_radius(self)
+    }
+}
 
 #[derive(Debug)]
 pub struct GeoHashCmd {
@@ -105,11 +159,22 @@ pub struct GeoHashCmd {
     pub items: Vec<String>,
 }
 
+impl Command for GeoHashCmd {
+    fn execute(&self) -> String {
+        db::geo_hash(self)
+    }
+}
+
 
 #[derive(Debug)]
 pub struct GeoPosCmd {
     pub arg_key: String,
     pub items: Vec<String>,
+}
+impl Command for GeoPosCmd {
+    fn execute(&self) -> String {
+        db::geo_pos(self)
+    }
 }
 
 #[derive(Debug)]
@@ -120,6 +185,12 @@ pub struct GeoRadiusByMemberCmd {
     pub arg_unit: Units,
     pub arg_order: ArgOrder,
 }
+impl Command for GeoRadiusByMemberCmd {
+    fn execute(&self) -> String {
+        db::geo_radius_by_member(self)
+    }
+}
+
 
 
 #[derive(Debug)]
@@ -130,170 +201,15 @@ pub struct GeoDistCmd {
     pub arg_unit: Units,
 }
 
-#[derive(Debug)]
-pub struct GeoDelCmd {
-    pub arg_key: String,
-}
-
-#[derive(Debug)]
-pub struct GeoRemoveCmd {
-    pub arg_key: String,
-    pub items: Vec<String>,
-}
-
-#[derive(Debug)]
-pub struct GeoJsonCmd {
-    pub arg_key: String,
-    pub items: Vec<String>,
-}
-
-#[derive(Debug)]
-pub struct ColCreateCmd {
-    pub arg_key: String,
-    pub items: Vec<String>,
-}
-
-// Grammar > get [key]
-#[derive(Debug)]
-pub struct GetCmd {
-    pub arg_key: String
-}
-
-// Grammar > del [key]
-#[derive(Debug)]
-pub struct DelCmd {
-    pub arg_key: String
-}
-
-#[derive(Debug)]
-pub struct KeysCmd {
-    pub pattern: String
-}
-
-#[derive(Debug)]
-pub struct ExistsCmd {
-    pub keys: Vec<String>,
-}
-
-
-#[derive(Debug)]
-pub struct InfoCmd;
-
-
-#[derive(Debug)]
-pub struct PingCmd;
-
-#[derive(Debug)]
-pub struct JSetRawCmd {
-    pub arg_key: String,
-    pub arg_value: String
-}
-
-
-pub type JSetArgItem = (String, Value);
-
-#[derive(Debug)]
-pub struct JSetCmd {
-    pub arg_key: String,
-    pub arg_set_items : Vec<JSetArgItem>
-}
-
-#[derive(Debug)]
-pub struct JMergeCmd {
-    pub arg_key: String,
-    pub arg_value: String
-}
-#[derive(Debug)]
-pub struct JGetCmd {
-    pub arg_key: String,
-    pub arg_dot_path : Option<String>
-}
-#[derive(Debug)]
-pub struct JPathCmd {
-    pub arg_key: String,
-    pub arg_selector: String
-}
-#[derive(Debug)]
-pub struct JDelCmd {
-    pub arg_key: String
-}
-
-impl Command for PingCmd {
-    fn execute(&self) -> String {
-        printer::print_pong()
-    }
-}
-
-impl Command for SetCmd {
-    fn execute(&self) -> String {
-        db::set(self)
-    }
-}
-
-impl Command for GetCmd {
-    fn execute(&self) -> String {
-        db::get(self)
-    }
-}
-
-impl Command for DelCmd {
-    fn execute(&self) -> String {
-        db::del(self)
-    }
-}
-
-impl Command for KeysCmd {
-    fn execute(&self) -> String {
-        db::keys(self)
-    }
-}
-
-impl Command for ExistsCmd {
-    fn execute(&self) -> String {
-        db::exists(self)
-    }
-}
-
-impl Command for InfoCmd {
-    fn execute(&self) -> String {
-        db::info(self)
-    }
-}
-
-impl Command for GeoAddCmd {
-    fn execute(&self) -> String {
-        db::geo_add(self)
-    }
-}
-
-impl Command for GeoHashCmd {
-    fn execute(&self) -> String {
-        db::geo_hash(self)
-    }
-}
-
-impl Command for GeoRadiusCmd {
-    fn execute(&self) -> String {
-        db::geo_radius(self)
-    }
-}
-
 impl Command for GeoDistCmd {
     fn execute(&self) -> String {
         db::geo_dist(self)
     }
 }
 
-impl Command for GeoRadiusByMemberCmd {
-    fn execute(&self) -> String {
-        db::geo_radius_by_member(self)
-    }
-}
-
-impl Command for GeoPosCmd {
-    fn execute(&self) -> String {
-        db::geo_pos(self)
-    }
+#[derive(Debug)]
+pub struct GeoDelCmd {
+    pub arg_key: String,
 }
 
 impl Command for GeoDelCmd {
@@ -302,23 +218,71 @@ impl Command for GeoDelCmd {
     }
 }
 
+
+#[derive(Debug)]
+pub struct GeoRemoveCmd {
+    pub arg_key: String,
+    pub items: Vec<String>,
+}
 impl Command for GeoRemoveCmd {
     fn execute(&self) -> String {
         db::geo_remove(self)
     }
 }
 
+
+#[derive(Debug)]
+pub struct GeoJsonCmd {
+    pub arg_key: String,
+    pub items: Vec<String>,
+}
 impl Command for GeoJsonCmd {
     fn execute(&self) -> String {
         db::geo_json(self)
     }
 }
 
+// server commands
+#[derive(Debug)]
+pub struct PingCmd;
+impl Command for PingCmd {
+    fn execute(&self) -> String {
+        printer::print_pong()
+    }
+}
+#[derive(Debug)]
+pub struct LastSaveCmd;
+impl Command for LastSaveCmd {
+    fn execute(&self) -> String {
+        db::last_save(self)
+    }
+}
 
+#[derive(Debug)]
+pub struct InfoCmd;
+impl Command for InfoCmd {
+    fn execute(&self) -> String {
+        db::info(self)
+    }
+}
+
+// json commands
+#[derive(Debug)]
+pub struct JSetRawCmd {
+    pub arg_key: String,
+    pub arg_value: String
+}
 impl Command for JSetRawCmd {
     fn execute(&self) -> String {
         db::jset_raw(self)
     }
+}
+
+pub type JSetArgItem = (String, Value);
+#[derive(Debug)]
+pub struct JSetCmd {
+    pub arg_key: String,
+    pub arg_set_items : Vec<JSetArgItem>
 }
 impl Command for JSetCmd {
     fn execute(&self) -> String {
@@ -326,26 +290,94 @@ impl Command for JSetCmd {
     }
 }
 
+#[derive(Debug)]
+pub struct JMergeCmd {
+    pub arg_key: String,
+    pub arg_value: String
+}
 impl Command for JMergeCmd {
     fn execute(&self) -> String {
         db::jmerge(self)
     }
 }
 
+#[derive(Debug)]
+pub struct JGetCmd {
+    pub arg_key: String,
+    pub arg_dot_path : Option<String>
+}
 impl Command for JGetCmd {
     fn execute(&self) -> String {
         db::jget(self)
     }
 }
 
+#[derive(Debug)]
+pub struct JPathCmd {
+    pub arg_key: String,
+    pub arg_selector: String
+}
 impl Command for JPathCmd {
     fn execute(&self) -> String {
         db::jpath(self)
     }
 }
 
+#[derive(Debug)]
+pub struct JDelCmd {
+    pub arg_key: String
+}
 impl Command for JDelCmd {
     fn execute(&self) -> String {
         db::jdel(self)
     }
 }
+
+#[derive(Debug)]
+pub struct JIncrByCmd {
+    pub arg_key: String,
+    pub arg_path : String,
+    pub arg_increment_value : i64
+}
+impl Command for JIncrByCmd {
+    fn execute(&self) -> String {
+        db::jincrby(self)
+    }
+}
+
+
+#[derive(Debug)]
+pub struct JIncrByFloatCmd {
+    pub arg_key: String,
+    pub arg_path : String,
+    pub arg_increment_value : f64
+}
+impl Command for JIncrByFloatCmd {
+    fn execute(&self) -> String {
+        db::jincrbyfloat(self)
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

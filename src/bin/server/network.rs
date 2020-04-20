@@ -34,6 +34,10 @@ use redis_protocol::types::Frame;
 use crate::error::SyntaxError;
 use crate::command::Command;
 
+struct Context{
+
+}
+
 
 fn process_socket(mut socket: TcpStream){
     // do work with socket here
@@ -60,10 +64,6 @@ fn process_socket(mut socket: TcpStream){
             };
         };
     });
-}
-
-pub fn process_client_request(decoded_msg: String) {
-    println!("Decoded Message: {}", decoded_msg);
 }
 
 pub async fn start_up(addr: &str) -> Result<(), Box<dyn std::error::Error>> {

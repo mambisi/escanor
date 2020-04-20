@@ -14,11 +14,12 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
     if cmd.eq("") {
         return Err(error::SyntaxError);
     }
+
     if cmd == "ping" {
         return Ok(Box::new(PingCmd));
-    }
-
-    if cmd == "set" {
+    } else if cmd == "lastsave" {
+        return Ok(Box::new(LastSaveCmd));
+    } else if cmd == "set" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
 
@@ -346,13 +347,17 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
             let value_string = c[1];
 
             if util::is_numeric(value_string) {
-                items.push((dot_path.to_owned(), Value::from(value_string.parse::<f64>().unwrap())));
+                let v = value_string.parse::<f64>().unwrap();
+                if v.fract() == 0.0 {
+                    let vs = v as i64;
+                    items.push((dot_path.to_owned(), json!(vs)));
+                } else {
+                    items.push((dot_path.to_owned(), json!(v)));
+                }
             } else {
                 items.push((dot_path.to_owned(), Value::String(value_string.to_owned())));
             }
         }
-
-
         return Ok(Box::new(JSetCmd {
             arg_key: arg_key.to_owned(),
             arg_set_items: items,
@@ -392,6 +397,51 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
 
         return Ok(Box::new(JDelCmd {
             arg_key: arg_key.to_owned(),
+        }));
+    } else if cmd == "jincrby" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_path = itr.next().unwrap_or(&empty_string);
+        if arg_path.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_value = itr.next().unwrap_or(&empty_string);
+        if arg_value.is_empty() { return Err(error::SyntaxError); }
+
+        if !util::is_integer(arg_value) {
+            return Err(error::SyntaxError);
+        }
+
+        let incr_value = arg_value.parse::<i64>().unwrap_or(0);
+
+        return Ok(Box::new(JIncrByCmd {
+            arg_key: arg_key.to_owned(),
+            arg_path: arg_path.to_owned(),
+            arg_increment_value: incr_value,
+        }));
+    }else if cmd == "jincrbyfloat" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_path = itr.next().unwrap_or(&empty_string);
+        if arg_path.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_value = itr.next().unwrap_or(&empty_string);
+        if arg_value.is_empty() { return Err(error::SyntaxError); }
+
+        if !util::is_numeric(arg_value) {
+            return Err(error::SyntaxError);
+        }
+
+        let incr_value = arg_value.parse::<f64>().unwrap_or(0.0);
+        if incr_value == 0.0 {
+            return Err(error::SyntaxError);
+        }
+
+        return Ok(Box::new(JIncrByFloatCmd {
+            arg_key: arg_key.to_owned(),
+            arg_path: arg_path.to_owned(),
+            arg_increment_value: incr_value,
         }));
     }
 

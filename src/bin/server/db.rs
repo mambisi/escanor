@@ -171,6 +171,8 @@ async fn save_db() {
     };
     match file.write_all(&content).await {
         Ok(_) => {
+            let mut last_save_time: RwLockWriteGuard<i64> = LAST_SAVE_TIME.write().unwrap();
+            *last_save_time = Utc::now().timestamp();
             return;
         }
         Err(e) => {
@@ -269,6 +271,12 @@ pub struct ESRecord {
     pub key: String,
     pub value: String,
     pub data_type: DataType,
+}
+
+pub fn last_save(cmd: &LastSaveCmd) -> String {
+    //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
+    let last_save_time: RwLockReadGuard<i64> = LAST_SAVE_TIME.read().unwrap();
+    print_integer(*last_save_time)
 }
 
 
@@ -836,8 +844,7 @@ pub fn jget(cmd: &JGetCmd) -> String {
             v => {
                 print_string(&v.to_string())
             }
-        }
-
+        };
     }
     print_string(&value.to_string())
 }
@@ -873,4 +880,96 @@ pub fn jdel(cmd: &JDelCmd) -> String {
     let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
     map.remove(&cmd.arg_key);
     print_ok()
+}
+
+pub fn jincrby(cmd: &JIncrByCmd) -> String {
+    let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
+    return match map.get_mut(&cmd.arg_key) {
+        None => {
+            return print_err("ERR key not found");
+        }
+        Some(mut j) => {
+            let mut json = j.value_mut();
+            let mut path_to_incr = json.dot_get(&cmd.arg_path).unwrap_or(Some(Value::Null)).unwrap_or(Value::Null);
+
+            if path_to_incr.is_null() {
+                let new_value = json!(cmd.arg_increment_value);
+                json.dot_set(&cmd.arg_path.to_owned(), new_value.clone());
+                return print_integer(new_value.as_i64().unwrap());
+            }
+            let new_value = if path_to_incr.is_number() {
+                if path_to_incr.is_i64() {
+                    let inc = path_to_incr.as_i64().unwrap() + cmd.arg_increment_value;
+                    json!(inc)
+                } else if path_to_incr.is_f64() {
+                    let inc = path_to_incr.as_f64().unwrap() + (cmd.arg_increment_value as f64);
+                    json!(inc)
+                } else if path_to_incr.is_u64() {
+                    let inc = path_to_incr.as_u64().unwrap() + (cmd.arg_increment_value as u64);
+                    json!(inc)
+                } else {
+                    Value::Null
+                }
+            } else {
+                Value::Null
+            };
+
+            if new_value.is_null() {
+                return print_err("ERR value is not a number");
+            }
+            return match json.dot_set(&cmd.arg_path, new_value.clone()) {
+                Ok(_) => {
+                    print_integer(new_value.as_i64().unwrap())
+                }
+                Err(e) => {
+                    print_err("ERR value not set")
+                }
+            };
+        }
+    };
+}
+
+pub fn jincrbyfloat(cmd: &JIncrByFloatCmd) -> String {
+    let mut map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
+    return match map.get_mut(&cmd.arg_key) {
+        None => {
+            return print_err("ERR key not found");
+        }
+        Some(mut j) => {
+            let mut json = j.value_mut();
+            let mut path_to_incr = json.dot_get(&cmd.arg_path).unwrap_or(Some(Value::Null)).unwrap_or(Value::Null);
+
+            if path_to_incr.is_null() {
+                let new_value = json!(cmd.arg_increment_value);
+                json.dot_set(&cmd.arg_path.to_owned(), new_value.clone());
+                return print_str(&new_value.to_string());
+            }
+            let new_value = if path_to_incr.is_number() {
+                if path_to_incr.is_i64() {
+                    return print_err("ERR value is not a float");
+                } else if path_to_incr.is_f64() {
+                    let inc = path_to_incr.as_f64().unwrap() + (cmd.arg_increment_value);
+                    json!(inc)
+                } else if path_to_incr.is_u64() {
+                    return print_err("ERR value is not a float");
+                } else {
+                    Value::Null
+                }
+            } else {
+                Value::Null
+            };
+
+            if new_value.is_null() {
+                return print_err("ERR value is not a number");
+            }
+            return match json.dot_set(&cmd.arg_path, new_value.clone()) {
+                Ok(_) => {
+                    print_str(&new_value.to_string())
+                }
+                Err(e) => {
+                    print_err("ERR value not set")
+                }
+            };
+        }
+    };
 }

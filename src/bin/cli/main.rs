@@ -153,7 +153,7 @@ fn run_program(client: &mut Client, interface: &mut Interface<DefaultTerminal>) 
                         if cmd.to_uppercase() == "JGET" || cmd.to_uppercase() == "GEOJSON" || cmd.to_uppercase() == "JPATH" {
                             let jva = va.to_owned();
                             let json : JsonValue = serde_json::from_str(&jva.trim_matches(&['"'] as &[_])).unwrap_or(JsonValue::Null);
-                            if json.is_null() {
+                            if json.is_null() || json.is_f64() {
                                 println!("{}", va);
                             }else {
                                 println!("{}",to_colored_json_auto(&json).unwrap_or(va.to_owned()))
