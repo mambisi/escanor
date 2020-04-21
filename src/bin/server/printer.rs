@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use std::error;
 
-use crate::db::{ESRecord, DataType};
+use crate::db::{ESValue, DataType};
 use crate::{APP_VERSION, APP_AUTHORS, APP_HOMEPAGE};
 
 pub trait JsonPrint {
@@ -29,20 +29,6 @@ pub fn print_err(msg: &str) -> String {
 pub fn print_from_error(error: &dyn error::Error) -> String {
     format!("{}{}{}", ERROR_PREFIX, error.to_owned(), CRLF)
 }
-
-pub fn print_record(record: &ESRecord) -> String {
-    let prefix = match record.data_type {
-        DataType::String => STRING_PREFIX,
-        DataType::Integer => INT_PREFIX,
-    };
-
-    if prefix == STRING_PREFIX {
-        return print_string(&record.value);
-    }
-
-    format!("{}{}{}", prefix, record.value.to_owned(), CRLF)
-}
-
 pub fn print_str(msg: &str) -> String {
     format!("+{}{}", msg, CRLF)
 }

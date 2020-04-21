@@ -12,6 +12,7 @@ use crate::unit_conv::Units;
 use nom::character::complete::char;
 use redis_protocol::types::Frame;
 use serde_json::Value;
+use crate::db::ESValue;
 
 pub fn compile_frame (frame : Frame) -> Result<Box<dyn Command>, error::SyntaxError> {
     let tokens: Vec<String> = tokenizer::generate_token_from_frame(frame);
@@ -64,12 +65,50 @@ pub trait Command {
     fn execute(&self) -> String;
 }
 
+// server commands
+#[derive(Debug)]
+pub struct PingCmd;
+impl Command for PingCmd {
+    fn execute(&self) -> String {
+        printer::print_pong()
+    }
+}
+#[derive(Debug)]
+pub struct LastSaveCmd;
+impl Command for LastSaveCmd {
+    fn execute(&self) -> String {
+        db::last_save(self)
+    }
+}
+#[derive(Debug)]
+pub struct BGSaveCmd;
+impl Command for BGSaveCmd {
+    fn execute(&self) -> String {
+        db::bg_save(self)
+    }
+}
+#[derive(Debug)]
+pub struct FlushDBCmd;
+impl Command for FlushDBCmd {
+    fn execute(&self) -> String {
+        db::flush_db(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct InfoCmd;
+impl Command for InfoCmd {
+    fn execute(&self) -> String {
+        db::info(self)
+    }
+}
+
+
 // Key value Commands
 #[derive(Debug)]
 pub struct SetCmd {
     pub arg_key: String,
-    pub arg_type: db::DataType,
-    pub arg_value: String,
+    pub arg_value: ESValue,
     pub arg_exp: u32,
 }
 impl Command for SetCmd {
@@ -95,6 +134,48 @@ pub struct DelCmd {
 impl Command for DelCmd {
     fn execute(&self) -> String {
         db::del(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct PersistCmd {
+    pub arg_key: String
+}
+impl Command for PersistCmd {
+    fn execute(&self) -> String {
+        db::persist(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct TTLCmd {
+    pub arg_key: String
+}
+impl Command for TTLCmd {
+    fn execute(&self) -> String {
+        db::ttl(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct ExpireCmd {
+    pub arg_key: String,
+    pub arg_value : i64
+}
+impl Command for ExpireCmd {
+    fn execute(&self) -> String {
+        db::expire(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct ExpireAtCmd {
+    pub arg_key: String,
+    pub arg_value : i64
+}
+impl Command for ExpireAtCmd {
+    fn execute(&self) -> String {
+        db::expire_at(self)
     }
 }
 
@@ -242,44 +323,6 @@ impl Command for GeoJsonCmd {
     }
 }
 
-// server commands
-#[derive(Debug)]
-pub struct PingCmd;
-impl Command for PingCmd {
-    fn execute(&self) -> String {
-        printer::print_pong()
-    }
-}
-#[derive(Debug)]
-pub struct LastSaveCmd;
-impl Command for LastSaveCmd {
-    fn execute(&self) -> String {
-        db::last_save(self)
-    }
-}
-#[derive(Debug)]
-pub struct BGSaveCmd;
-impl Command for BGSaveCmd {
-    fn execute(&self) -> String {
-        db::bg_save(self)
-    }
-}
-#[derive(Debug)]
-pub struct FlushDBCmd;
-impl Command for FlushDBCmd {
-    fn execute(&self) -> String {
-        db::flush_db(self)
-    }
-}
-
-
-#[derive(Debug)]
-pub struct InfoCmd;
-impl Command for InfoCmd {
-    fn execute(&self) -> String {
-        db::info(self)
-    }
-}
 
 // json commands
 #[derive(Debug)]

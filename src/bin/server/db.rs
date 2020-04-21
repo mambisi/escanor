@@ -37,7 +37,7 @@ use std::path::{PathBuf, Path};
 use self::jsonpath::JsonPathError;
 use self::dashmap::{DashMap, DashSet};
 use regex::internal::Input;
-use self::dashmap::mapref::one::RefMut;
+use self::dashmap::mapref::one::{RefMut, Ref};
 use json_dotpath::DotPaths;
 
 lazy_static! {
@@ -46,7 +46,7 @@ lazy_static! {
     static ref KEYS_REM_EX_HASH : Arc<DashMap<String, i64>> = Arc::new(DashMap::new());
     static ref DELETED_KEYS_LIST : Arc<DashSet<String>> = Arc::new(DashSet::new());
     //Data
-    static ref BTREE : Arc<DashMap<String, ESRecord>> = Arc::new(DashMap::new());
+    static ref BTREE : Arc<DashMap<String, ESValue>> = Arc::new(DashMap::new());
     static ref JSON_BTREE : Arc<DashMap<String, Value>> = Arc::new(DashMap::new());
     static ref GEO_BTREE : Arc<DashMap<String, HashSet<GeoPoint2D>>> = Arc::new(DashMap::new());
     static ref GEO_RTREE : Arc<DashMap<String, RTree<GeoPoint2D>>> = Arc::new(DashMap::new());
@@ -59,21 +59,22 @@ lazy_static! {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Database {
-    btree: DashMap<String, ESRecord>,
+    btree: DashMap<String, ESValue>,
     json_btree: DashMap<String, Value>,
     geo_tree: DashMap<String, HashSet<GeoPoint2D>>,
 }
 
-fn increment_mutation_counter(){
+fn increment_mutation_counter() {
     let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
     *mutation_counter += 1;
 }
 
-fn increment_mutation_counter_by(u : usize){
+fn increment_mutation_counter_by(u: usize) {
     let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
     *mutation_counter += u;
 }
-fn reset_mutation_counter(){
+
+fn reset_mutation_counter() {
     let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
     *mutation_counter = 0;
 }
@@ -108,7 +109,7 @@ async fn load_db() {
         Ok(t) => t,
         Err(_) => { return; }
     };
-    let mut btree: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let mut btree: Arc<DashMap<String, ESValue>> = BTREE.clone();
     let mut json_btree: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
     let mut geo_btree: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
     let mut r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
@@ -146,12 +147,12 @@ async fn load_db() {
 
 async fn save_db() {
     let mut json_btree_copy = DashMap::<String, Value>::new();
-    let mut btree_copy = DashMap::<String, ESRecord>::new();
+    let mut btree_copy = DashMap::<String, ESValue>::new();
     let mut geo_btree_copy = DashMap::<String, HashSet<GeoPoint2D>>::new();
 
     {
         let json_btree: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
-        let btree: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+        let btree: Arc<DashMap<String, ESValue>> = BTREE.clone();
         let geo_btree: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
 
         json_btree_copy.clone_from(&json_btree);
@@ -199,6 +200,9 @@ async fn save_db() {
     };
 }
 
+extern crate rayon;
+use rayon::prelude::*;
+
 pub async fn init_db() {
     lazy_static::initialize(&BTREE);
     lazy_static::initialize(&JSON_BTREE);
@@ -213,26 +217,30 @@ pub async fn init_db() {
         let mut interval = time::interval(Duration::from_secs(1));
         loop {
             interval.tick().await;
-            let mutation_count_since_save: RwLockReadGuard<usize> = MUTATION_COUNT_SINCE_SAVE.read().unwrap();
-            debug!("Mutation Count: {}",  *mutation_count_since_save);
+
             remove_expired_keys();
+
+            let mutation_count_since_save: RwLockReadGuard<usize> = MUTATION_COUNT_SINCE_SAVE.read().unwrap();
+            debug!("Mutation Count: {}", *mutation_count_since_save);
+            std::mem::drop(mutation_count_since_save);
+
             let current_ts = Utc::now().timestamp();
-            let map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
+            let mut map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
             //let map = map.into_read_only();
             if map.is_empty() {
                 continue;
             }
-            for rec in map.iter() {
-                let exp_time = rec.value();
-                let key = rec.key();
+
+            map.iter().par_bridge().for_each(|data| {
+                let exp_time = data.value();
+                let key = data.key();
                 if exp_time.to_owned() <= current_ts {
-                    let del_cmd = DelCmd {
-                        arg_key: key.to_owned()
-                    };
                     debug!("Remove Key -> {}", key);
-                    del(&del_cmd);
+                    del(&DelCmd {
+                        arg_key: key.to_owned()
+                    });
                 }
-            }
+            });
         };
     });
 
@@ -270,8 +278,8 @@ pub async fn init_db() {
     });
 }
 
-fn clear_db(){
-    let mut b_map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+fn clear_db() {
+    let mut b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
     let mut k_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
     let mut deleted_keys_map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
     let mut r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
@@ -291,7 +299,6 @@ fn clear_db(){
     r_map.clear();
     geo_map.clear();
     json_map.clear();
-
 }
 
 fn remove_expired_keys() {
@@ -310,10 +317,32 @@ pub enum DataType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ESRecord {
-    pub key: String,
-    pub value: String,
-    pub data_type: DataType,
+pub enum ESValue {
+    String(String),
+    Int(i64),
+}
+
+impl ESValue {
+    fn as_int(&self) -> Option<&i64> {
+        match self {
+            ESValue::String(_) => {
+                None
+            }
+            ESValue::Int(i) => {
+                Some(i)
+            }
+        }
+    }
+    fn as_string(&self) -> Option<&String> {
+        match self {
+            ESValue::String(s) => {
+                Some(s)
+            }
+            ESValue::Int(_) => {
+                None
+            }
+        }
+    }
 }
 
 pub fn last_save(cmd: &LastSaveCmd) -> String {
@@ -322,14 +351,14 @@ pub fn last_save(cmd: &LastSaveCmd) -> String {
     print_integer(*last_save_time)
 }
 
-pub fn bg_save(cmd: &BGSaveCmd) -> String{
+pub fn bg_save(cmd: &BGSaveCmd) -> String {
     tokio::task::spawn(async {
         save_db();
     });
     print_ok()
 }
 
-pub fn flush_db(cmd: &FlushDBCmd) -> String{
+pub fn flush_db(cmd: &FlushDBCmd) -> String {
     tokio::task::spawn(async {
         clear_db();
     });
@@ -339,14 +368,8 @@ pub fn flush_db(cmd: &FlushDBCmd) -> String{
 
 pub fn set(cmd: &SetCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
-    let mut map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let mut map: Arc<DashMap<String, ESValue>> = BTREE.clone();
 
-
-    let record = &ESRecord {
-        key: cmd.arg_key.to_owned(),
-        value: cmd.arg_value.to_owned(),
-        data_type: cmd.arg_type.to_owned(),
-    };
 
     if cmd.arg_exp > 0 {
         let timestamp = Utc::now().timestamp();
@@ -354,19 +377,27 @@ pub fn set(cmd: &SetCmd) -> String {
         rem_map.insert(cmd.arg_key.to_owned(), (cmd.arg_exp.to_owned() as i64 + timestamp));
     }
 
-    map.insert(record.key.to_owned(), record.to_owned());
+    map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned());
 
     increment_mutation_counter();
     print_ok()
 }
 
 pub fn get(cmd: &GetCmd) -> String {
-    let map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
     let key = &cmd.arg_key.to_owned();
 
     return match map.get(key) {
         Some(r) => {
-            print_record(r.value())
+            match r.value() {
+                ESValue::String(s) => {
+                    print_string(s)
+                }
+                ESValue::Int(i) => {
+                    print_integer(i.to_owned())
+                }
+            }
+            //print_record(r.value())
         }
         None => {
             print_err("KEY_NOT_FOUND")
@@ -375,7 +406,7 @@ pub fn get(cmd: &GetCmd) -> String {
 }
 
 pub fn exists(cmd: &ExistsCmd) -> String {
-    let map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
 
     let mut found_count: i64 = 0;
     for key in &cmd.keys {
@@ -388,7 +419,7 @@ pub fn exists(cmd: &ExistsCmd) -> String {
 }
 
 pub fn info(cmd: &InfoCmd) -> String {
-    let map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
     //let map = map.into_read_only();
     let key_count = map.len();
     let info = format!("db0:keys={}\r\n", key_count);
@@ -396,7 +427,7 @@ pub fn info(cmd: &InfoCmd) -> String {
 }
 
 pub fn del(cmd: &DelCmd) -> String {
-    let mut map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let mut map: Arc<DashMap<String, ESValue>> = BTREE.clone();
     let key = &cmd.arg_key.to_owned();
     return match map.remove(key) {
         Some(r) => {
@@ -411,8 +442,117 @@ pub fn del(cmd: &DelCmd) -> String {
     };
 }
 
+pub fn persist(cmd: &PersistCmd) -> String {
+    let mut map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
+    let key = &cmd.arg_key;
+
+    return match map.remove(key) {
+        None => {
+            print_integer(0)
+        }
+        Some(_) => {
+            print_integer(1)
+        }
+    };
+}
+
+pub fn ttl(cmd: &TTLCmd) -> String {
+    let rem_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
+    let b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let key: &String = &cmd.arg_key;
+
+    let mut out = 0;
+
+    if !b_map.contains_key(key) {
+        out += -1
+    }
+    return match rem_map.get(key) {
+        None => {
+            out += -1;
+            print_integer(out)
+        }
+        Some(data) => {
+            let ttl = data.value();
+            print_integer(*ttl)
+        }
+    };
+}
+
+pub fn expire(cmd: &ExpireCmd) -> String {
+    let mut rem_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
+    let b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let key: String = cmd.arg_key.to_owned();
+    let value: i64 = cmd.arg_value;
+
+    let mut out = 0;
+
+    if !b_map.contains_key(&key) {
+        return print_integer(out);
+    }
+
+    let expire_at = Utc::now().timestamp() + value;
+
+    rem_map.insert(key, expire_at);
+
+    print_integer(out)
+}
+
+pub fn expire_at(cmd: &ExpireAtCmd) -> String {
+    let mut rem_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
+    let b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let key: String = cmd.arg_key.to_owned();
+    let expire_at: i64 = cmd.arg_value;
+
+    let mut out = 0;
+
+    if !b_map.contains_key(&key) {
+        return print_integer(out);
+    }
+
+    rem_map.insert(key, expire_at);
+
+    print_integer(out)
+}
+
+pub fn incr_by(cmd: &ExpireCmd) -> String {
+    let mut b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let key: String = cmd.arg_key.to_owned();
+    let value: i64 = cmd.arg_value;
+    let default_v = 0;
+
+    let result = match b_map.get_mut(&key) {
+        None => {
+            let value = ESValue::Int(value);
+            b_map.insert(key, value.clone());
+            return print_integer(*value.as_int().unwrap());
+        }
+        Some(mut data) => {
+            match data.value_mut() {
+                ESValue::String(s) => {
+                    match s.parse::<i64>() {
+                        Ok(d) => {
+                            let new_value = d + value;
+                            *s = new_value.to_string();
+                            print_string(s)
+                        }
+                        Err(_) => {
+                            print_err("ERR string cannot be represented as integer")
+                        }
+                    }
+                }
+                ESValue::Int(i) => {
+                    *i += value;
+                    print_integer(*i)
+                }
+            }
+        }
+    };
+
+    result
+}
+
 pub fn keys(cmd: &KeysCmd) -> String {
-    let map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
     //let map = map.into_read_only();
     let pattern_marcher = match Pattern::new(&cmd.pattern) {
         Ok(t) => t,

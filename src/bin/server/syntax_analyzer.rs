@@ -3,6 +3,8 @@ use crate::{error, util, unit_conv, db};
 use tokio::macros::support::Pin;
 use serde_json::{Value, Number};
 use serde_json::map::Values;
+use crate::db::ESValue;
+use std::num::ParseIntError;
 
 pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, error::SyntaxError> {
     let empty_string: String = String::from("");
@@ -30,13 +32,19 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         let arg_value = itr.next().unwrap_or(&empty_string);
         if arg_value.is_empty() { return Err(error::SyntaxError); }
 
+        let es_val = if util::is_integer(arg_value){
+            let i = arg_value.parse::<i64>().unwrap();
+            ESValue::Int(i)
+        }else {
+            ESValue::String(arg_value.to_owned())
+        };
+
         let arg_ex_cmd = &itr.next().unwrap_or(&empty_string).to_lowercase();
 
         if arg_ex_cmd.is_empty() {
             return Ok(Box::new(SetCmd {
                 arg_key: arg_key.to_owned(),
-                arg_type: get_type(arg_value),
-                arg_value: arg_value.to_owned(),
+                arg_value: es_val,
                 arg_exp: 0,
             }));
         } else if arg_ex_cmd == "ex" {
@@ -44,8 +52,7 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
             let arg_exp = arg_next.parse::<u32>().unwrap_or(0);
             return Ok(Box::new(SetCmd {
                 arg_key: arg_key.to_owned(),
-                arg_type: get_type(arg_value),
-                arg_value: arg_value.to_owned(),
+                arg_value: es_val,
                 arg_exp,
             }));
         }
@@ -55,7 +62,63 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         return Ok(Box::new(GetCmd {
             arg_key: arg_key.to_owned()
         }));
-    } else if cmd == "del" {
+    }else if cmd == "ttl" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+        return Ok(Box::new(TTLCmd {
+            arg_key: arg_key.to_owned()
+        }));
+    }else if cmd == "persist" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+        return Ok(Box::new(PersistCmd {
+            arg_key: arg_key.to_owned()
+        }));
+    }else if cmd == "expire" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_value = itr.next().unwrap_or(&empty_string);
+        if arg_value.is_empty() { return Err(error::SyntaxError); }
+
+        return match arg_value.parse::<i64>() {
+            Ok(t) => {
+                if t < 0 {
+                    return Err(error::SyntaxError);
+                }
+                Ok(Box::new(ExpireCmd {
+                    arg_key: arg_key.to_owned(),
+                    arg_value : t
+                }))
+            },
+            Err(_) => {
+                Err(error::SyntaxError)
+            },
+        }
+    }
+    else if cmd == "expire_at" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_value = itr.next().unwrap_or(&empty_string);
+        if arg_value.is_empty() { return Err(error::SyntaxError); }
+
+        return match arg_value.parse::<i64>() {
+            Ok(t) => {
+                if t < 0 {
+                    return Err(error::SyntaxError);
+                }
+                Ok(Box::new(ExpireAtCmd {
+                    arg_key: arg_key.to_owned(),
+                    arg_value : t
+                }))
+            },
+            Err(_) => {
+                Err(error::SyntaxError)
+            },
+        }
+    }
+    else if cmd == "del" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
         return Ok(Box::new(DelCmd {

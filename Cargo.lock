@@ -566,6 +566,7 @@ dependencies = [
  "log",
  "multimap",
  "nom 5.1.1",
+ "rayon",
  "redis-protocol",
  "regex",
  "resp",
