@@ -264,6 +264,13 @@ impl Command for BGSaveCmd {
         db::bg_save(self)
     }
 }
+#[derive(Debug)]
+pub struct FlushDBCmd;
+impl Command for FlushDBCmd {
+    fn execute(&self) -> String {
+        db::flush_db(self)
+    }
+}
 
 
 #[derive(Debug)]

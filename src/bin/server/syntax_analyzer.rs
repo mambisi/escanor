@@ -21,6 +21,8 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         return Ok(Box::new(LastSaveCmd));
     } else if cmd == "bgsave" {
         return Ok(Box::new(BGSaveCmd));
+    } else if cmd == "flushdb" {
+        return Ok(Box::new(FlushDBCmd));
     } else if cmd == "set" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }

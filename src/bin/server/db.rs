@@ -53,7 +53,7 @@ lazy_static! {
     //Time keepers
     static ref LAST_SAVE_TIME : Arc<RwLock<i64>> = Arc::new(RwLock::new(0));
     static ref LAST_SAVE_DURATION : Arc<RwLock<u64>> = Arc::new(RwLock::new(0));
-    static ref MUTATION_COUNT_SINCE_SAVE : Arc<RwLock<u64>> = Arc::new(RwLock::new(0));
+    static ref MUTATION_COUNT_SINCE_SAVE : Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 }
 
 
@@ -65,12 +65,16 @@ struct Database {
 }
 
 fn increment_mutation_counter(){
-    let mut mutation_counter: RwLockWriteGuard<u64> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
+    let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
     *mutation_counter += 1;
 }
 
+fn increment_mutation_counter_by(u : usize){
+    let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
+    *mutation_counter += u;
+}
 fn reset_mutation_counter(){
-    let mut mutation_counter: RwLockWriteGuard<u64> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
+    let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
     *mutation_counter = 0;
 }
 
@@ -209,6 +213,8 @@ pub async fn init_db() {
         let mut interval = time::interval(Duration::from_secs(1));
         loop {
             interval.tick().await;
+            let mutation_count_since_save: RwLockReadGuard<usize> = MUTATION_COUNT_SINCE_SAVE.read().unwrap();
+            debug!("Mutation Count: {}",  *mutation_count_since_save);
             remove_expired_keys();
             let current_ts = Utc::now().timestamp();
             let map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
@@ -246,22 +252,46 @@ pub async fn init_db() {
     tokio::spawn(async {
         let conf = crate::config::conf();
         let save_interval = conf.database.save_after as u64;
-        let save_muts_cout = conf.database.mutations as u64;
+        let save_muts_cout = conf.database.mutations;
         let mut interval = time::interval(Duration::from_secs(conf.database.save_after as u64));
         loop {
             interval.tick().await;
             let mut mutations = 0;
             {
-                let mutation_count_since_save: RwLockReadGuard<u64> = MUTATION_COUNT_SINCE_SAVE.read().unwrap();
+                let mutation_count_since_save: RwLockReadGuard<usize> = MUTATION_COUNT_SINCE_SAVE.read().unwrap();
                 mutations = *mutation_count_since_save;
             }
 
             let current_ts = Utc::now().timestamp();
-            if save_muts_cout >= mutations {
+            if mutations >= save_muts_cout {
                 save_db().await;
             };
         };
     });
+}
+
+fn clear_db(){
+    let mut b_map: Arc<DashMap<String, ESRecord>> = BTREE.clone();
+    let mut k_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
+    let mut deleted_keys_map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
+    let mut r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
+    let mut geo_map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
+    let mut json_map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
+
+    increment_mutation_counter_by(b_map.len());
+    increment_mutation_counter_by(k_map.len());
+    increment_mutation_counter_by(r_map.len());
+    increment_mutation_counter_by(geo_map.len());
+    increment_mutation_counter_by(json_map.len());
+    //b_map.len();
+
+    b_map.clear();
+    k_map.clear();
+    deleted_keys_map.clear();
+    r_map.clear();
+    geo_map.clear();
+    json_map.clear();
+
 }
 
 fn remove_expired_keys() {
@@ -295,6 +325,13 @@ pub fn last_save(cmd: &LastSaveCmd) -> String {
 pub fn bg_save(cmd: &BGSaveCmd) -> String{
     tokio::task::spawn(async {
         save_db();
+    });
+    print_ok()
+}
+
+pub fn flush_db(cmd: &FlushDBCmd) -> String{
+    tokio::task::spawn(async {
+        clear_db();
     });
     print_ok()
 }
@@ -1006,4 +1043,5 @@ pub fn jincr_by_float(cmd: &JIncrByFloatCmd) -> String {
         }
     };
 }
+
 
