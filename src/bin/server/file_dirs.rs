@@ -1,7 +1,7 @@
-use std::path::{PathBuf, Path};
+use std::path::{PathBuf};
 use app_dirs2::*;
 use crate::APP_INFO;
-use std::ffi::OsStr;
+
 
 pub fn config_file_path() -> Option<PathBuf> {
 

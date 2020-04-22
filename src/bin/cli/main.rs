@@ -3,10 +3,10 @@ extern crate escanor;
 
 extern crate clap;
 
-use linefeed::chars::escape_sequence;
-use linefeed::command::COMMANDS;
+
+
 use linefeed::{Command, Function, Interface, Prompter, ReadResult, Terminal, DefaultTerminal, Signal};
-use linefeed::inputrc::parse_text;
+
 use std::io;
 
 extern crate resp;
@@ -23,8 +23,8 @@ mod command;
 use clap::{App, Arg};
 
 use std::str::FromStr;
-use cookie_factory::lib::std::io::Error;
-use std::sync::Arc;
+
+
 
 extern crate serde;
 extern crate serde_json;
@@ -109,7 +109,7 @@ fn main() -> io::Result<()> {
                 interface.set_prompt(&format!("{}:{}> ", hostname, port)).unwrap();
                 let _ = run_program(&mut cli, &mut interface);
             }
-            Err(err) => {
+            Err(_err) => {
                 interface.set_prompt("not connected> ")?;
                 let res = interface.read_line()?;
                 match res {
@@ -118,7 +118,7 @@ fn main() -> io::Result<()> {
                         if !line.trim().is_empty() {
                             interface.add_history_unique(line.clone());
                         }
-                        let (cmd, args) = split_first_word(&line);
+                        let (cmd, _args) = split_first_word(&line);
                         ex_sys_cmd(cmd, &mut interface);
                         continue;
                     }
@@ -143,7 +143,7 @@ fn run_program(client: &mut Client, interface: &mut Interface<DefaultTerminal>) 
                 if !line.trim().is_empty() {
                     interface.add_history_unique(line.clone());
                 }
-                let (cmd, args) = split_first_word(&line);
+                let (cmd, _args) = split_first_word(&line);
                 ex_sys_cmd(cmd,interface);
                 let commands = parser::parse_raw_cmd(line.clone().as_bytes());
                 let ref_commands: Vec<&str> = commands.iter().map(AsRef::as_ref).collect();
@@ -177,7 +177,7 @@ fn run_program(client: &mut Client, interface: &mut Interface<DefaultTerminal>) 
     Ok(())
 }
 
-fn ex_sys_cmd(command: &str, rinterface: &mut Interface<DefaultTerminal>) {
+fn ex_sys_cmd(command: &str, _rinterface: &mut Interface<DefaultTerminal>) {
     match command {
         "exit" => {
             std::process::exit(1);

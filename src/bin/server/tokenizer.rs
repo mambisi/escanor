@@ -13,9 +13,9 @@ pub fn generate_tokens_from_resp(buf: &[u8]) -> Vec<String> {
 
     let buf: BytesMut = BytesMut::from(buf);
 
-    let (frame, consumed) = match decode_bytes(&buf) {
+    let (frame, _consumed) = match decode_bytes(&buf) {
         Ok((f, c)) => (f, c),
-        Err(e) => {
+        Err(_e) => {
             return tokens;
         }
     };

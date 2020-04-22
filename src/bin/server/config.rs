@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use lazy_static::lazy_static;
 use std::sync::{RwLock, Arc, RwLockReadGuard, RwLockWriteGuard};
-use crate::{printer, APP_INFO};
+
 use serde::{Serialize, Deserialize};
 
 lazy_static! {
@@ -32,10 +32,10 @@ pub struct Conf {
 
 use tokio::io::{AsyncReadExt,AsyncWriteExt};
 use tokio::fs::{OpenOptions, File};
-use std::path::{PathBuf, Path};
+
 use serde_yaml;
 use crate::file_dirs;
-use tokio::runtime::Runtime;
+
 use nom::AsBytes;
 
 pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
@@ -61,7 +61,7 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     //path.join("");
     //rewrite()
     let mut file: File = match OpenOptions::new().read(true).open(path.clone()).await {
-        Err(e) => {
+        Err(_e) => {
             panic!("Configuration file not loaded");
             return Err("Configuration file not loaded".to_owned());
         }
@@ -69,11 +69,11 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     };
 
     let mut contents: Vec<u8> = vec![];
-    let n: usize = match file.read_to_end(&mut contents).await {
+    let _n: usize = match file.read_to_end(&mut contents).await {
         Ok(n) => {
             n
         }
-        Err(e) => {
+        Err(_e) => {
             return Err("Error".to_owned());
         }
     };
@@ -207,7 +207,7 @@ server:
         Ok(_) => {
             Ok(())
         }
-        Err(e) => {
+        Err(_e) => {
             Err("".to_owned())
         }
     };

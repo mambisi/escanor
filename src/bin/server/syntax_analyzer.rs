@@ -1,13 +1,13 @@
 use crate::command::*;
-use crate::{error, util, unit_conv, db};
+use crate::{error, util, unit_conv};
 use serde_json::{Value};
-use serde_json::map::Values;
+
 use crate::db::ESValue;
-use std::num::ParseIntError;
+
 
 pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, error::SyntaxError> {
     let empty_string: String = String::from("");
-    let default_type: String = String::from("string");
+    let _default_type: String = String::from("string");
     let default_exp_time_str: String = String::from("0");
 
     let mut itr = tokens.iter();
@@ -254,7 +254,7 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
 
         let arg_unit = match unit_conv::parse(arg_unit_string) {
             Ok(unit) => unit,
-            Err(e) => {
+            Err(_e) => {
                 return Err(error::SyntaxError);
             }
         };
@@ -300,7 +300,7 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
 
         let arg_unit = match unit_conv::parse(arg_unit_string) {
             Ok(unit) => unit,
-            Err(e) => {
+            Err(_e) => {
                 return Err(error::SyntaxError);
             }
         };
@@ -326,7 +326,7 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
 
         let arg_unit = match unit_conv::parse(arg_unit_string) {
             Ok(unit) => unit,
-            Err(e) => {
+            Err(_e) => {
                 return Err(error::SyntaxError);
             }
         };

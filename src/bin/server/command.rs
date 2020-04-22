@@ -1,15 +1,15 @@
 extern crate regex;
 
-use crate::{db, printer, unit_conv};
+use crate::{db, printer};
 use crate::error;
-use crate::util;
+
 use crate::error::SyntaxError;
 use crate::tokenizer;
 use crate::syntax_analyzer;
-use regex::Regex;
-use serde::export::Option::Some;
+
+
 use crate::unit_conv::Units;
-use nom::character::complete::char;
+
 use redis_protocol::types::Frame;
 use serde_json::Value;
 use crate::db::ESValue;
@@ -18,12 +18,12 @@ pub fn compile_frame (frame : Frame) -> Result<Box<dyn Command>, error::SyntaxEr
     let tokens: Vec<String> = tokenizer::generate_token_from_frame(frame);
     match syntax_analyzer::analyse_token_stream(tokens) {
         Ok(t) => Ok(t),
-        Err(e) => Err(SyntaxError)
+        Err(_e) => Err(SyntaxError)
     }
 }
 
 pub fn compile(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
-    let empty_string = String::new();
+    let _empty_string = String::new();
     let first_char = buf[0] as char;
     return match first_char {
         '*' | '$' | '+' => {
@@ -48,7 +48,7 @@ pub fn compile_raw(cmd: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
 
     match syntax_analyzer::analyse_token_stream(tokens) {
         Ok(t) => Ok(t),
-        Err(e) => Err(SyntaxError)
+        Err(_e) => Err(SyntaxError)
     }
 }
 
@@ -56,7 +56,7 @@ pub fn compile_resp(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> 
     let tokens: Vec<String> = tokenizer::generate_tokens_from_resp(buf);
     match syntax_analyzer::analyse_token_stream(tokens) {
         Ok(t) => Ok(t),
-        Err(e) => Err(SyntaxError)
+        Err(_e) => Err(SyntaxError)
     }
 }
 

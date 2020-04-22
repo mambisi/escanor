@@ -1,9 +1,9 @@
 use std::io;
 use bytes::BytesMut;
 use tokio_util::codec::{Decoder, Encoder};
-use resp::{Value, Decoder as RespDecoder};
-use std::io::BufReader;
-use std::str;
+
+
+
 use redis_protocol::prelude::*;
 
 pub struct RespCodec;
@@ -20,7 +20,7 @@ impl Decoder for RespCodec {
         }
         let (frame, consumed) = match decode_bytes(&buf) {
             Ok((f, c)) => (f, c),
-            Err(e) => return Ok(None)
+            Err(_e) => return Ok(None)
         };
 
         return if let Some(frame) = frame {

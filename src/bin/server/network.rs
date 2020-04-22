@@ -6,30 +6,30 @@ extern crate tokio_util;
 use tokio::net::{TcpListener, TcpStream};
 //use tokio::prelude::*;
 use crate::command;
-use crate::db;
-use std::fmt::Debug;
-use std::collections::BTreeMap;
+
+
+
 
 use crate::printer;
-use crate::printer::{print_err, print_from_error};
+use crate::printer::{print_from_error};
 
 use futures::SinkExt;
 use tokio::stream::StreamExt;
 use tokio_util::codec::{BytesCodec, Decoder, LinesCodec, Framed};
 
-use std::time::Duration;
-use std::sync::Arc;
-use std::net::SocketAddr;
-use std::io;
+
+
+
+
 
 use crate::codec::RespCodec;
-use std::cell::RefCell;
 
-use bytes::{BytesMut, BufMut};
+
+use bytes::{BytesMut};
 use nom::AsBytes;
 use redis_protocol::prelude::*;
 use redis_protocol::types::Frame;
-use crate::error::SyntaxError;
+
 use crate::command::Command;
 
 struct Context{
@@ -37,7 +37,7 @@ struct Context{
 }
 
 
-fn process_socket(mut socket: TcpStream){
+fn process_socket(socket: TcpStream){
     // do work with socket here
     tokio::spawn(async move {
         let mut lines = RespCodec.framed(socket);
@@ -74,7 +74,7 @@ pub async fn start_up(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         match listener.accept().await {
-            Ok((socket, addr)) => {
+            Ok((socket, _addr)) => {
                 process_socket(socket);
             }
             Err(e) => error!("couldn't get client: {:?}", e),

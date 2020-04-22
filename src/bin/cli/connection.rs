@@ -19,7 +19,7 @@ impl Connection {
     }
 
     pub fn write(&mut self, buf: &[u8]) -> Result<()> {
-        let stream = self.stream.get_mut() as &mut Write;
+        let stream = self.stream.get_mut() as &mut dyn Write;
         stream.write_all(buf)
     }
 
