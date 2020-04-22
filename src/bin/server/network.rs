@@ -22,8 +22,6 @@ use std::sync::Arc;
 use std::net::SocketAddr;
 use std::io;
 
-const MB: usize = 1_048_576;
-
 use crate::codec::RespCodec;
 use std::cell::RefCell;
 

@@ -78,7 +78,7 @@ pub fn print_pong() -> String {
 
 
 pub fn build_geo_json<T: GeoJsonFeature>(f: &Vec<T>) -> Value {
-    let mut features: Vec<Value> = f.iter().map(|m| {
+    let features: Vec<Value> = f.iter().map(|m| {
         m.geo_json_feature()
     }).collect();
 
