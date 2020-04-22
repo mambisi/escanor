@@ -38,7 +38,7 @@ const DEMO_FN_SEQ: &str = "\n^c";
 
 fn main() -> io::Result<()> {
     let matches = App::new("escanor-cli")
-        .version("0.0.1")
+        .version("0.2.0")
         .author("Mambisi Zempare <mambisizempare@gmail.com>")
         .arg(
             Arg::with_name("hostname")

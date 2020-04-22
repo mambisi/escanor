@@ -32,7 +32,7 @@ use console::style;
 use std::env;
 
 const APP_NAME: &str = "Escanor";
-const APP_VERSION: &str = "0.1.0";
+const APP_VERSION: &str = "0.1.5";
 const APP_AUTHORS: &str = "Mambisi Zempare <mambisizempare@gmail.com>";
 const APP_HOMEPAGE: &str = "https://github.com/mambisi/escanor";
 const APP_ABOUT: &str = "Escanor is key value in memory database with disk store developed by ByteQuery Ltd.";

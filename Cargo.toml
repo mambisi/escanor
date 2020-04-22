@@ -1,6 +1,6 @@
 [package]
 name = "escanor"
-version = "0.1.0"
+version = "0.1.5"
 authors = ["Mambisi Zempare <lilbizi96@gmail.com>"]
 homepage = "escanor.io"
 edition = "2018"

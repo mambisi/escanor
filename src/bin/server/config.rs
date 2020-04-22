@@ -33,7 +33,7 @@ pub struct NetConf {
 pub struct Conf {
     pub database: DatabaseConf,
     pub network: NetConf,
-    pub server: ServerConf
+    pub server: Value
 }
 
 use tokio::io::{AsyncReadExt,AsyncWriteExt};
@@ -43,7 +43,7 @@ use serde_yaml;
 use crate::file_dirs;
 
 use nom::AsBytes;
-use serde_yaml::Value;
+use serde_yaml::{Value, Mapping};
 
 pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     debug!("Opening config...");
@@ -112,7 +112,18 @@ impl Conf {
         map.insert("network.max_packet".to_owned(), self.database.save_after.to_string());
         map.insert("network.max_connections".to_owned(), self.database.save_after.to_string());
 
-        match &self.server.require_auth {
+
+        let null_value = Value::Null;
+
+        let require_auth = match &self.server {
+            Value::Mapping(m) => {
+                m.get(&Value::String(String::from("require_auth"))).unwrap_or(&null_value)
+            },
+            _ => {
+                &null_value
+            }
+        };
+        match require_auth {
 
             Value::String(t) => {
                 map.insert("server.require_auth".to_owned(), t.to_owned());
@@ -152,11 +163,9 @@ impl Conf {
                Value::String(t.to_owned())
             },
         };
-
-        let server_conf = ServerConf {
-            require_auth
-        };
-
+        let mut map = Mapping::new();
+        map.insert(Value::String(String::from("require_auth")), require_auth);
+        let server_conf = Value::Mapping(map);
         Conf {
             database: db_conf,
             network: net_conf,
@@ -217,7 +226,7 @@ network:
   max_connections: 0
 # uncomment require_auth to to require authentication for server communication
 server:
-#require_auth: mypassword
+  require_auth:#set your password here
 "#;
     let path = match file_dirs::config_file_path() {
         None => { return Err("Error reading file path".to_owned()); }

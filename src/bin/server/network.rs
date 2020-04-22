@@ -43,7 +43,18 @@ fn process_socket(socket: TcpStream){
 
         use crate::config;
 
-        let require_auth = &config::conf().server.require_auth;
+        let null_value = Value::Null;
+
+        let conf_file = config::conf();
+
+        let require_auth = match &conf_file.server {
+            Value::Mapping(m) => {
+                m.get(&Value::String(String::from("require_auth"))).unwrap_or(&null_value)
+            },
+            _ => {
+               &null_value
+            }
+        };
 
         let auth_key =  match require_auth {
             Value::String(t) => {
