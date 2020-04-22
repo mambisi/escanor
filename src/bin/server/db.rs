@@ -21,8 +21,8 @@ extern crate dashmap;
 
 use serde_json::Value;
 use tokio::time;
-use std::time::{Duration};
-use chrono::{Utc};
+use std::time::Duration;
+use chrono::Utc;
 
 extern crate jsonpath_lib as jsonpath;
 extern crate json_dotpath;
@@ -31,7 +31,7 @@ extern crate json_dotpath;
 use rmp_serde;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::fs::{OpenOptions};
+use tokio::fs::OpenOptions;
 use tokio::time::Instant;
 
 
@@ -41,6 +41,7 @@ use regex::internal::Input;
 use json_dotpath::DotPaths;
 
 extern crate nanoid;
+
 use nanoid::nanoid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -233,6 +234,7 @@ async fn save_db() {
 }
 
 extern crate rayon;
+
 use rayon::prelude::*;
 
 pub async fn init_db() {
@@ -337,11 +339,44 @@ fn remove_expired_keys() {
 }
 
 
-
 pub fn last_save(_cmd: &LastSaveCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
     let last_save_time: RwLockReadGuard<i64> = LAST_SAVE_TIME.read().unwrap();
     print_integer(*last_save_time)
+}
+
+use crate::network::Context;
+
+pub fn auth(context: &mut Context, cmd: &AuthCmd) -> String {
+    context.client_auth_key = Some(cmd.arg_password.to_owned());
+    if !context.auth_is_required {
+        return print_ok()
+    }
+
+    let auth_key = match &context.auth_key {
+        Some(k) => k.to_owned(),
+        None => {
+            return print_err("ERR internal error");
+        }
+    };
+
+    let client_auth_key = match &context.client_auth_key {
+        Some(k) => k.to_owned(),
+        None => {
+            return print_err("ERR internal error");
+        }
+    };
+
+    if auth_key == client_auth_key {
+        context.client_authenticated = true
+    } else {
+        context.client_authenticated = false
+    }
+    return if context.client_authenticated {
+        print_ok()
+    } else {
+        print_err("ERR auth failed")
+    }
 }
 
 pub fn bg_save(_cmd: &BGSaveCmd) -> String {
@@ -382,22 +417,22 @@ pub fn get_set(cmd: &GetSetCmd) -> String {
 
     let empty_string = String::new();
 
-    return match &map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned()){
+    return match &map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned()) {
         None => {
             increment_mutation_counter();
             print_string(&empty_string)
-        },
+        }
         Some(s) => {
-            match  s {
+            match s {
                 ESValue::String(s) => {
                     increment_mutation_counter();
                     print_string(&s)
-                },
+                }
                 ESValue::Int(_) => {
                     print_err("ERR value is not a string")
-                },
+                }
             }
-        },
+        }
     };
 }
 

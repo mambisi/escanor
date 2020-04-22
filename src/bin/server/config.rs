@@ -17,6 +17,11 @@ pub struct DatabaseConf {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct ServerConf {
+    pub require_auth: Value,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct NetConf {
     pub port: usize,
     pub bind: String,
@@ -28,6 +33,7 @@ pub struct NetConf {
 pub struct Conf {
     pub database: DatabaseConf,
     pub network: NetConf,
+    pub server: ServerConf
 }
 
 use tokio::io::{AsyncReadExt,AsyncWriteExt};
@@ -37,6 +43,7 @@ use serde_yaml;
 use crate::file_dirs;
 
 use nom::AsBytes;
+use serde_yaml::Value;
 
 pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     debug!("Opening config...");
@@ -105,6 +112,14 @@ impl Conf {
         map.insert("network.max_packet".to_owned(), self.database.save_after.to_string());
         map.insert("network.max_connections".to_owned(), self.database.save_after.to_string());
 
+        match &self.server.require_auth {
+
+            Value::String(t) => {
+                map.insert("server.require_auth".to_owned(), t.to_owned());
+            }
+            _ => {}
+        }
+
         map
     }
     fn from_rw(map: &RwLockReadGuard<HashMap<String, String>>) -> Conf {
@@ -115,6 +130,7 @@ impl Conf {
 
         let default_d_save_after = String::from("60");
         let default_d_muts = String::from("4");
+
 
         let net_conf = NetConf {
             port: map.get("network.port").unwrap_or(&default_n_port).parse::<usize>().unwrap(),
@@ -128,9 +144,23 @@ impl Conf {
             mutations: map.get("database.mutations").unwrap_or(&default_d_muts).parse::<usize>().unwrap(),
         };
 
+        let require_auth = match map.get("server.require_auth") {
+            None => {
+                Value::Null
+            },
+            Some(t) => {
+               Value::String(t.to_owned())
+            },
+        };
+
+        let server_conf = ServerConf {
+            require_auth
+        };
+
         Conf {
             database: db_conf,
             network: net_conf,
+            server : server_conf
         }
     }
 }

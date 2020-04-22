@@ -32,21 +32,55 @@ use redis_protocol::types::Frame;
 
 use crate::command::Command;
 
-struct Context{
-
+#[derive(Clone,Debug)]
+pub struct Context{
+    pub client_addr : SocketAddr,
+    pub auth_is_required : bool,
+    pub auth_key : Option<String>,
+    pub client_authenticated : bool,
+    pub client_auth_key : Option<String>
 }
 
+use std::net::{SocketAddr,Shutdown};
+use futures::io::Error;
+use serde_yaml::Value;
 
 fn process_socket(socket: TcpStream){
     // do work with socket here
     tokio::spawn(async move {
+
+        let addrs : SocketAddr = socket.peer_addr().unwrap();
+
+        use crate::config;
+
+        let require_auth = &config::conf().server.require_auth;
+
+        let auth_key =  match require_auth {
+            Value::String(t) => {
+                t.to_owned()
+            }
+            _ => {
+                String::new()
+            }
+        };
+
+        let mut context = Context {
+            client_addr: addrs,
+            auth_is_required : !auth_key.is_empty(),
+            auth_key: if auth_key.is_empty() {None}else { Some(auth_key) },
+            client_authenticated : false,
+            client_auth_key : None
+        };
+
+        debug!("New Connection Context: {:?}", context.clone());
+
         let mut lines = RespCodec.framed(socket);
         while let Some(message) = lines.next().await {
             match message {
                 Ok(frame) => {
                    let response_message = match command::compile_frame(frame) {
                         Ok(cmd) => {
-                            let res = cmd.execute().to_owned();
+                            let res = cmd.execute(&mut context).to_owned();
                             res
                         },
                         Err(err) => {
@@ -58,7 +92,9 @@ fn process_socket(socket: TcpStream){
                     lines.send(f.unwrap_or(Frame::Error("Internal Error".to_owned()))).await;
                     //lines.send(Frame::SimpleString("Ok".to_string())).await;
                 }
-                Err(err) => { println!("Socket closed with error: {:?}", err); }
+                Err(err) => {
+                    debug!("Disconnected Context: {:?}", context);
+                    println!("Socket closed with error: {:?}", err); }
             };
         };
     });

@@ -12,9 +12,10 @@ use crate::unit_conv::Units;
 
 use redis_protocol::types::Frame;
 use serde_json::Value;
-use crate::db::ESValue;
+use crate::db::{ESValue, bg_save};
+use crate::printer::*;
 
-pub fn compile_frame (frame : Frame) -> Result<Box<dyn Command>, error::SyntaxError> {
+pub fn compile_frame(frame: Frame) -> Result<Box<dyn Command>, error::SyntaxError> {
     let tokens: Vec<String> = tokenizer::generate_token_from_frame(frame);
     match syntax_analyzer::analyse_token_stream(tokens) {
         Ok(t) => Ok(t),
@@ -60,62 +61,117 @@ pub fn compile_resp(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> 
     }
 }
 
+
+use crate::network::Context;
+
 pub trait Command {
     //fn execute(&self, db: &db::DB);
-    fn execute(&self) -> String;
+    fn execute(&self, context: &mut Context) -> String;
 }
 
+pub fn auth_context<T>(context: &mut Context,cmd : T, f : fn( T ) -> String ) -> String {
+    if !context.auth_is_required {
+        return f(cmd)
+    }
+
+    let auth_key = match &context.auth_key {
+        Some(k) => k.to_owned(),
+        None => {
+            return print_err("ERR auth");
+        }
+    };
+
+    let client_auth_key = match &context.client_auth_key {
+        Some(k) => k.to_owned(),
+        None => {
+            return print_err("ERR auth");
+        }
+    };
+
+    if auth_key == client_auth_key {
+        context.client_authenticated = true
+    } else {
+        context.client_authenticated = false
+    }
+    return if context.client_authenticated {
+        f(cmd)
+    } else {
+        print_err("ERR auth failed")
+    }
+}
 // server commands
 #[derive(Debug)]
 pub struct PingCmd;
+
 impl Command for PingCmd {
-    fn execute(&self) -> String {
+    fn execute(&self, context: &mut Context) -> String {
         printer::print_pong()
     }
 }
+
 #[derive(Debug)]
 pub struct LastSaveCmd;
+
 impl Command for LastSaveCmd {
-    fn execute(&self) -> String {
-        db::last_save(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::last_save)
     }
 }
+
+#[derive(Debug)]
+pub struct AuthCmd {
+    pub arg_password : String
+}
+
+impl Command for AuthCmd {
+    fn execute(&self, context: &mut Context) -> String {
+        db::auth(context,self)
+    }
+}
+
 #[derive(Debug)]
 pub struct BGSaveCmd;
+
 impl Command for BGSaveCmd {
-    fn execute(&self) -> String {
-        db::bg_save(self)
+    fn execute(&self, context: &mut Context) -> String {
+        //db::bg_save(self)
+        auth_context(context,self,bg_save)
     }
 }
+
 #[derive(Debug)]
 pub struct FlushDBCmd;
+
 impl Command for FlushDBCmd {
-    fn execute(&self) -> String {
-        db::flush_db(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::flush_db)
     }
 }
 
 #[derive(Debug)]
 pub struct RandomKeyCmd;
+
 impl Command for RandomKeyCmd {
-    fn execute(&self) -> String {
-        db::random_key(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::random_key)
     }
 }
 
 #[derive(Debug)]
 pub struct InfoCmd;
+
 impl Command for InfoCmd {
-    fn execute(&self) -> String {
-        db::info(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::info)
     }
 }
 
 #[derive(Debug)]
 pub struct DBSizeCmd;
+
 impl Command for DBSizeCmd {
-    fn execute(&self) -> String {
-        db::db_size(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::db_size)
     }
 }
 
@@ -127,19 +183,22 @@ pub struct SetCmd {
     pub arg_value: ESValue,
     pub arg_exp: u32,
 }
+
 impl Command for SetCmd {
-    fn execute(&self) -> String {
-        db::set(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::set)
     }
 }
+
 #[derive(Debug)]
 pub struct GetSetCmd {
     pub arg_key: String,
-    pub arg_value: ESValue
+    pub arg_value: ESValue,
 }
+
 impl Command for GetSetCmd {
-    fn execute(&self) -> String {
-        db::get_set(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::get_set)
     }
 }
 
@@ -147,9 +206,10 @@ impl Command for GetSetCmd {
 pub struct GetCmd {
     pub arg_key: String
 }
+
 impl Command for GetCmd {
-    fn execute(&self) -> String {
-        db::get(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::get)
     }
 }
 
@@ -157,9 +217,10 @@ impl Command for GetCmd {
 pub struct DelCmd {
     pub arg_key: String
 }
+
 impl Command for DelCmd {
-    fn execute(&self) -> String {
-        db::del(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::del)
     }
 }
 
@@ -167,9 +228,10 @@ impl Command for DelCmd {
 pub struct PersistCmd {
     pub arg_key: String
 }
+
 impl Command for PersistCmd {
-    fn execute(&self) -> String {
-        db::persist(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::persist)
     }
 }
 
@@ -177,31 +239,34 @@ impl Command for PersistCmd {
 pub struct TTLCmd {
     pub arg_key: String
 }
+
 impl Command for TTLCmd {
-    fn execute(&self) -> String {
-        db::ttl(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::ttl)
     }
 }
 
 #[derive(Debug)]
 pub struct ExpireCmd {
     pub arg_key: String,
-    pub arg_value : i64
+    pub arg_value: i64,
 }
+
 impl Command for ExpireCmd {
-    fn execute(&self) -> String {
-        db::expire(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::expire)
     }
 }
 
 #[derive(Debug)]
 pub struct ExpireAtCmd {
     pub arg_key: String,
-    pub arg_value : i64
+    pub arg_value: i64,
 }
+
 impl Command for ExpireAtCmd {
-    fn execute(&self) -> String {
-        db::expire_at(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::expire_at)
     }
 }
 
@@ -209,9 +274,10 @@ impl Command for ExpireAtCmd {
 pub struct KeysCmd {
     pub pattern: String
 }
+
 impl Command for KeysCmd {
-    fn execute(&self) -> String {
-        db::keys(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::keys)
     }
 }
 
@@ -219,23 +285,26 @@ impl Command for KeysCmd {
 pub struct ExistsCmd {
     pub keys: Vec<String>,
 }
+
 impl Command for ExistsCmd {
-    fn execute(&self) -> String {
-        db::exists(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::exists)
     }
 }
 //
 
 // Geo Spatial Commands
 pub type CmdGeoItem = (f64, f64, String);
+
 #[derive(Debug)]
 pub struct GeoAddCmd {
     pub arg_key: String,
     pub items: Vec<CmdGeoItem>,
 }
+
 impl Command for GeoAddCmd {
-    fn execute(&self) -> String {
-        db::geo_add(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_add)
     }
 }
 
@@ -245,6 +314,7 @@ pub enum ArgOrder {
     DESC,
     UNSPECIFIED,
 }
+
 #[derive(Debug)]
 pub struct GeoRadiusCmd {
     pub arg_key: String,
@@ -254,9 +324,10 @@ pub struct GeoRadiusCmd {
     pub arg_unit: Units,
     pub arg_order: ArgOrder,
 }
+
 impl Command for GeoRadiusCmd {
-    fn execute(&self) -> String {
-        db::geo_radius(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_radius)
     }
 }
 
@@ -267,8 +338,8 @@ pub struct GeoHashCmd {
 }
 
 impl Command for GeoHashCmd {
-    fn execute(&self) -> String {
-        db::geo_hash(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_hash)
     }
 }
 
@@ -278,9 +349,10 @@ pub struct GeoPosCmd {
     pub arg_key: String,
     pub items: Vec<String>,
 }
+
 impl Command for GeoPosCmd {
-    fn execute(&self) -> String {
-        db::geo_pos(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_pos)
     }
 }
 
@@ -292,12 +364,12 @@ pub struct GeoRadiusByMemberCmd {
     pub arg_unit: Units,
     pub arg_order: ArgOrder,
 }
+
 impl Command for GeoRadiusByMemberCmd {
-    fn execute(&self) -> String {
-        db::geo_radius_by_member(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_radius_by_member)
     }
 }
-
 
 
 #[derive(Debug)]
@@ -309,8 +381,8 @@ pub struct GeoDistCmd {
 }
 
 impl Command for GeoDistCmd {
-    fn execute(&self) -> String {
-        db::geo_dist(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_dist)
     }
 }
 
@@ -320,8 +392,8 @@ pub struct GeoDelCmd {
 }
 
 impl Command for GeoDelCmd {
-    fn execute(&self) -> String {
-        db::geo_del(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_del)
     }
 }
 
@@ -331,9 +403,10 @@ pub struct GeoRemoveCmd {
     pub arg_key: String,
     pub items: Vec<String>,
 }
+
 impl Command for GeoRemoveCmd {
-    fn execute(&self) -> String {
-        db::geo_remove(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_remove)
     }
 }
 
@@ -343,9 +416,10 @@ pub struct GeoJsonCmd {
     pub arg_key: String,
     pub items: Vec<String>,
 }
+
 impl Command for GeoJsonCmd {
-    fn execute(&self) -> String {
-        db::geo_json(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::geo_json)
     }
 }
 
@@ -354,56 +428,62 @@ impl Command for GeoJsonCmd {
 #[derive(Debug)]
 pub struct JSetRawCmd {
     pub arg_key: String,
-    pub arg_value: String
+    pub arg_value: String,
 }
+
 impl Command for JSetRawCmd {
-    fn execute(&self) -> String {
-        db::jset_raw(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jset_raw)
     }
 }
 
 pub type JSetArgItem = (String, Value);
+
 #[derive(Debug)]
 pub struct JSetCmd {
     pub arg_key: String,
-    pub arg_set_items : Vec<JSetArgItem>
+    pub arg_set_items: Vec<JSetArgItem>,
 }
+
 impl Command for JSetCmd {
-    fn execute(&self) -> String {
-        db::jset(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jset)
     }
 }
 
 #[derive(Debug)]
 pub struct JMergeCmd {
     pub arg_key: String,
-    pub arg_value: String
+    pub arg_value: String,
 }
+
 impl Command for JMergeCmd {
-    fn execute(&self) -> String {
-        db::jmerge(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jmerge)
     }
 }
 
 #[derive(Debug)]
 pub struct JGetCmd {
     pub arg_key: String,
-    pub arg_dot_path : Option<String>
+    pub arg_dot_path: Option<String>,
 }
+
 impl Command for JGetCmd {
-    fn execute(&self) -> String {
-        db::jget(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jget)
     }
 }
 
 #[derive(Debug)]
 pub struct JPathCmd {
     pub arg_key: String,
-    pub arg_selector: String
+    pub arg_selector: String,
 }
+
 impl Command for JPathCmd {
-    fn execute(&self) -> String {
-        db::jpath(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jpath)
     }
 }
 
@@ -411,21 +491,23 @@ impl Command for JPathCmd {
 pub struct JDelCmd {
     pub arg_key: String
 }
+
 impl Command for JDelCmd {
-    fn execute(&self) -> String {
-        db::jdel(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jdel)
     }
 }
 
 #[derive(Debug)]
 pub struct JIncrByCmd {
     pub arg_key: String,
-    pub arg_path : String,
-    pub arg_increment_value : i64
+    pub arg_path: String,
+    pub arg_increment_value: i64,
 }
+
 impl Command for JIncrByCmd {
-    fn execute(&self) -> String {
-        db::jincr_by(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jincr_by)
     }
 }
 
@@ -433,12 +515,13 @@ impl Command for JIncrByCmd {
 #[derive(Debug)]
 pub struct JIncrByFloatCmd {
     pub arg_key: String,
-    pub arg_path : String,
-    pub arg_increment_value : f64
+    pub arg_path: String,
+    pub arg_increment_value: f64,
 }
+
 impl Command for JIncrByFloatCmd {
-    fn execute(&self) -> String {
-        db::jincr_by_float(self)
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jincr_by_float)
     }
 }
 
