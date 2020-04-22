@@ -565,6 +565,7 @@ dependencies = [
  "linefeed",
  "log",
  "multimap",
+ "nanoid",
  "nom 5.1.1",
  "rayon",
  "redis-protocol",
@@ -1101,6 +1102,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8883adfde9756c1d30b0f519c9b8c502a94b41ac62f696453c37c7fc0a958ce"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "nanoid"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6226bc4e142124cb44e309a37a04cd9bb10e740d8642855441d3b14808f635e"
+dependencies = [
+ "rand 0.6.5",
 ]
 
 [[package]]

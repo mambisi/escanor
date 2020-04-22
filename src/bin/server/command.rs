@@ -96,10 +96,26 @@ impl Command for FlushDBCmd {
 }
 
 #[derive(Debug)]
+pub struct RandomKeyCmd;
+impl Command for RandomKeyCmd {
+    fn execute(&self) -> String {
+        db::random_key(self)
+    }
+}
+
+#[derive(Debug)]
 pub struct InfoCmd;
 impl Command for InfoCmd {
     fn execute(&self) -> String {
         db::info(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct DBSizeCmd;
+impl Command for DBSizeCmd {
+    fn execute(&self) -> String {
+        db::db_size(self)
     }
 }
 
@@ -114,6 +130,16 @@ pub struct SetCmd {
 impl Command for SetCmd {
     fn execute(&self) -> String {
         db::set(self)
+    }
+}
+#[derive(Debug)]
+pub struct GetSetCmd {
+    pub arg_key: String,
+    pub arg_value: ESValue
+}
+impl Command for GetSetCmd {
+    fn execute(&self) -> String {
+        db::get_set(self)
     }
 }
 

@@ -40,6 +40,8 @@ use regex::internal::Input;
 
 use json_dotpath::DotPaths;
 
+extern crate nanoid;
+use nanoid::nanoid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ESValue {
@@ -247,12 +249,7 @@ pub async fn init_db() {
         let mut interval = time::interval(Duration::from_secs(1));
         loop {
             interval.tick().await;
-
             remove_expired_keys();
-
-            let mutation_count_since_save: RwLockReadGuard<usize> = MUTATION_COUNT_SINCE_SAVE.read().unwrap();
-            debug!("Mutation Count: {}", *mutation_count_since_save);
-            std::mem::drop(mutation_count_since_save);
 
             let current_ts = Utc::now().timestamp();
             let map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
@@ -364,7 +361,7 @@ pub fn flush_db(_cmd: &FlushDBCmd) -> String {
 
 pub fn set(cmd: &SetCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
-    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let mut map: Arc<DashMap<String, ESValue>> = BTREE.clone();
 
 
     if cmd.arg_exp > 0 {
@@ -373,10 +370,41 @@ pub fn set(cmd: &SetCmd) -> String {
         rem_map.insert(cmd.arg_key.to_owned(), cmd.arg_exp.to_owned() as i64 + timestamp);
     }
 
-    map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned());
+    &map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned());
 
     increment_mutation_counter();
     print_ok()
+}
+
+pub fn get_set(cmd: &GetSetCmd) -> String {
+    //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
+    let mut map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+
+    let empty_string = String::new();
+
+    return match &map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned()){
+        None => {
+            increment_mutation_counter();
+            print_string(&empty_string)
+        },
+        Some(s) => {
+            match  s {
+                ESValue::String(s) => {
+                    increment_mutation_counter();
+                    print_string(&s)
+                },
+                ESValue::Int(_) => {
+                    print_err("ERR value is not a string")
+                },
+            }
+        },
+    };
+}
+
+pub fn random_key(cmd: &RandomKeyCmd) -> String {
+    //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
+    let key = nanoid!(25, &util::ALPHA_NUMERIC);
+    print_string(&key)
 }
 
 pub fn get(cmd: &GetCmd) -> String {
@@ -420,6 +448,13 @@ pub fn info(_cmd: &InfoCmd) -> String {
     let key_count = map.len();
     let info = format!("db0:keys={}\r\n", key_count);
     print_string(&info)
+}
+
+pub fn db_size(_cmd: &DBSizeCmd) -> String {
+    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    //let map = map.into_read_only();
+    let key_count = map.len();
+    print_integer(key_count as i64)
 }
 
 pub fn del(cmd: &DelCmd) -> String {

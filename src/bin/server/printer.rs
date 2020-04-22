@@ -10,6 +10,8 @@ use serde_json::Value;
 
 use std::error;
 
+use redis_protocol::prelude::*;
+
 
 use crate::{APP_VERSION, APP_AUTHORS, APP_HOMEPAGE};
 
@@ -20,7 +22,6 @@ pub trait JsonPrint {
 pub trait GeoJsonFeature {
     fn geo_json_feature(&self) -> Value;
 }
-
 
 pub fn print_err(msg: &str) -> String {
     format!("{}{}{}", ERROR_PREFIX, msg, CRLF)
