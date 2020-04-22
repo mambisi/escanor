@@ -34,6 +34,7 @@ pub struct Context{
 use std::net::{SocketAddr,Shutdown};
 use futures::io::Error;
 use serde_yaml::Value;
+use crate::config::ServerConf;
 
 fn process_socket(socket: TcpStream){
     // do work with socket here
@@ -47,22 +48,27 @@ fn process_socket(socket: TcpStream){
 
         let conf_file = config::conf();
 
-        let require_auth = match &conf_file.server {
-            Value::Mapping(m) => {
-                m.get(&Value::String(String::from("require_auth"))).unwrap_or(&null_value)
+        let require_auth = match &conf_file.server{
+            None => { None},
+            Some(server) => {
+                match &server.require_auth {
+                    None => {
+                        None
+                    },
+                    Some(t) => {
+                        Some(t)
+                    },
+                }
             },
-            _ => {
-               &null_value
-            }
         };
 
         let auth_key =  match require_auth {
-            Value::String(t) => {
-                t.to_owned()
-            }
-            _ => {
+            None => {
                 String::new()
-            }
+            },
+            Some(t) => {
+                t.to_owned()
+            },
         };
 
         let mut context = Context {

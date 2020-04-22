@@ -18,7 +18,7 @@ pub struct DatabaseConf {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConf {
-    pub require_auth: Value,
+    pub require_auth: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub struct NetConf {
 pub struct Conf {
     pub database: DatabaseConf,
     pub network: NetConf,
-    pub server: Value
+    pub server: Option<ServerConf>
 }
 
 use tokio::io::{AsyncReadExt,AsyncWriteExt};
@@ -115,21 +115,17 @@ impl Conf {
 
         let null_value = Value::Null;
 
-        let require_auth = match &self.server {
-            Value::Mapping(m) => {
-                m.get(&Value::String(String::from("require_auth"))).unwrap_or(&null_value)
+        match &self.server {
+            None => {},
+            Some(server_conf) => {
+               match &server_conf.require_auth {
+                   None => {},
+                   Some(t) => {
+                       map.insert("server.require_auth".to_owned(), t.to_owned());
+                   },
+               }
             },
-            _ => {
-                &null_value
-            }
         };
-        match require_auth {
-
-            Value::String(t) => {
-                map.insert("server.require_auth".to_owned(), t.to_owned());
-            }
-            _ => {}
-        }
 
         map
     }
@@ -155,21 +151,22 @@ impl Conf {
             mutations: map.get("database.mutations").unwrap_or(&default_d_muts).parse::<usize>().unwrap(),
         };
 
-        let require_auth = match map.get("server.require_auth") {
-            None => {
-                Value::Null
-            },
-            Some(t) => {
-               Value::String(t.to_owned())
-            },
+
+        let server_conf = ServerConf {
+            require_auth: match map.get("server.require_auth"){
+                None => {
+                    None
+                },
+                Some(t) => {
+                    Some(t.to_owned())
+                },
+            }
         };
-        let mut map = Mapping::new();
-        map.insert(Value::String(String::from("require_auth")), require_auth);
-        let server_conf = Value::Mapping(map);
+
         Conf {
             database: db_conf,
             network: net_conf,
-            server : server_conf
+            server : Some(server_conf)
         }
     }
 }
