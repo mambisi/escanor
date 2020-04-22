@@ -531,8 +531,3 @@ fn check_validate_arg_order(arg_order_string: String, arg_order: &mut ArgOrder) 
     Err(error::SyntaxError)
 }
 
-
-fn get_type(t: &String) -> db::DataType {
-    if util::is_integer(t) { db::DataType::Integer } else { db::DataType::String }
-}
-

@@ -40,6 +40,36 @@ use regex::internal::Input;
 use self::dashmap::mapref::one::{RefMut, Ref};
 use json_dotpath::DotPaths;
 
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ESValue {
+    String(String),
+    Int(i64),
+}
+
+impl ESValue {
+    fn as_int(&self) -> Option<&i64> {
+        match self {
+            ESValue::String(_) => {
+                None
+            }
+            ESValue::Int(i) => {
+                Some(i)
+            }
+        }
+    }
+    fn as_string(&self) -> Option<&String> {
+        match self {
+            ESValue::String(s) => {
+                Some(s)
+            }
+            ESValue::Int(_) => {
+                None
+            }
+        }
+    }
+}
+
 lazy_static! {
     //Load balancing
     static ref SAVE_IN_PROCEES : Arc<RwLock<u8>> = Arc::new(RwLock::new(0));
@@ -310,40 +340,6 @@ fn remove_expired_keys() {
 }
 
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum DataType {
-    String,
-    Integer,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ESValue {
-    String(String),
-    Int(i64),
-}
-
-impl ESValue {
-    fn as_int(&self) -> Option<&i64> {
-        match self {
-            ESValue::String(_) => {
-                None
-            }
-            ESValue::Int(i) => {
-                Some(i)
-            }
-        }
-    }
-    fn as_string(&self) -> Option<&String> {
-        match self {
-            ESValue::String(s) => {
-                Some(s)
-            }
-            ESValue::Int(_) => {
-                None
-            }
-        }
-    }
-}
 
 pub fn last_save(cmd: &LastSaveCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;

@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use std::error;
 
-use crate::db::{ESValue, DataType};
+use crate::db::{ESValue};
 use crate::{APP_VERSION, APP_AUTHORS, APP_HOMEPAGE};
 
 pub trait JsonPrint {
