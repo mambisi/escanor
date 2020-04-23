@@ -50,7 +50,7 @@ cargo run --bin escanor-cli
 
 New cli with pretty formatted json and colored json output
 
-![logo](https://raw.githubusercontent.com/mambisi/escanor/master/static/escanor-cli.jpg)
+![logo](https://raw.githubusercontent.com/mambisi/escanor/master/static/escanor-cli.png)
 
 
 #### New Commands
