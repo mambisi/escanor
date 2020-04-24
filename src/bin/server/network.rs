@@ -79,8 +79,6 @@ fn process_socket(socket: TcpStream){
             client_auth_key : None
         };
 
-        debug!("New Connection Context: {:?}", context.clone());
-
         let mut lines = RespCodec.framed(socket);
         while let Some(message) = lines.next().await {
             match message {

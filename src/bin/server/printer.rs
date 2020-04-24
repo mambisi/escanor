@@ -27,6 +27,10 @@ pub fn print_err(msg: &str) -> String {
     format!("{}{}{}", ERROR_PREFIX, msg, CRLF)
 }
 
+pub fn print_wrong_type_err() -> String {
+    print_err("WRONGTYPE Operation against a key holding the wrong kind of value")
+}
+
 pub fn print_from_error(error: &dyn error::Error) -> String {
     format!("{}{}{}", ERROR_PREFIX, error.to_owned(), CRLF)
 }

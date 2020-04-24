@@ -50,6 +50,14 @@ pub enum ESValue {
     Int(i64),
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum KeyType {
+    KV,
+    JSON,
+    GEO,
+}
+
+
 impl ESValue {
     fn as_int(&self) -> Option<&i64> {
         match self {
@@ -79,7 +87,8 @@ lazy_static! {
     static ref KEYS_REM_EX_HASH : Arc<DashMap<String, i64>> = Arc::new(DashMap::new());
     static ref DELETED_KEYS_LIST : Arc<DashSet<String>> = Arc::new(DashSet::new());
     //Data
-    static ref BTREE : Arc<DashMap<String, ESValue>> = Arc::new(DashMap::new());
+    static ref KEYS_MAP : Arc<DashMap<String, KeyType>> = Arc::new(DashMap::new());
+    static ref KV_BTREE : Arc<DashMap<String, ESValue>> = Arc::new(DashMap::new());
     static ref JSON_BTREE : Arc<DashMap<String, Value>> = Arc::new(DashMap::new());
     static ref GEO_BTREE : Arc<DashMap<String, HashSet<GeoPoint2D>>> = Arc::new(DashMap::new());
     static ref GEO_RTREE : Arc<DashMap<String, RTree<GeoPoint2D>>> = Arc::new(DashMap::new());
@@ -112,6 +121,55 @@ fn reset_mutation_counter() {
     *mutation_counter = 0;
 }
 
+fn is_key_valid_for_type(key: &str, key_type: KeyType) -> bool {
+    let keys_map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
+    return match keys_map.get(key) {
+        None => {
+            true
+        }
+        Some(entry) => {
+            entry.value().to_owned() == key_type
+        }
+    };
+}
+
+fn insert_key(key: &String, key_type: KeyType) {
+    if !is_key_valid_for_type(key, key_type.to_owned()) {
+        match key_type {
+            KeyType::KV => {
+                jdel(&JDelCmd {
+                    arg_key: key.to_owned()
+                });
+                geo_del(&GeoDelCmd {
+                    arg_key: key.to_owned()
+                });
+            }
+            KeyType::JSON => {
+                del(&DelCmd {
+                    arg_key: key.to_owned()
+                });
+                geo_del(&GeoDelCmd {
+                    arg_key: key.to_owned()
+                });
+            }
+            KeyType::GEO => {
+                del(&DelCmd {
+                    arg_key: key.to_owned()
+                });
+                jdel(&JDelCmd {
+                    arg_key: key.to_owned()
+                });
+            }
+        }
+    }
+    let keys_map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
+    keys_map.insert(key.to_owned(), key_type);
+}
+
+fn remove_key(key: &String) {
+    let keys_map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
+    keys_map.remove(key);
+}
 
 async fn load_db() {
     let path = match file_dirs::db_file_path() {
@@ -142,7 +200,8 @@ async fn load_db() {
         Ok(t) => t,
         Err(_) => { return; }
     };
-    let btree: Arc<DashMap<String, ESValue>> = BTREE.clone();
+
+    let btree: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     let json_btree: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
     let geo_btree: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
     let r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
@@ -151,16 +210,19 @@ async fn load_db() {
 
     &saved_db.geo_tree.iter().for_each(|data| {
         geo_btree.insert(data.key().to_owned(), data.value().to_owned());
+        insert_key(&data.key(), KeyType::GEO);
     }
     );
 
     &saved_db.json_btree.iter().for_each(|data| {
         json_btree.insert(data.key().to_owned(), data.value().to_owned());
+        insert_key(&data.key(), KeyType::JSON);
     }
     );
 
     &saved_db.btree.iter().for_each(|data| {
         btree.insert(data.key().to_owned(), data.value().to_owned());
+        insert_key(&data.key(), KeyType::KV);
     }
     );
 
@@ -185,7 +247,7 @@ async fn save_db() {
 
     {
         let json_btree: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
-        let btree: Arc<DashMap<String, ESValue>> = BTREE.clone();
+        let btree: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
         let geo_btree: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
 
         json_btree_copy.clone_from(&json_btree);
@@ -238,7 +300,8 @@ extern crate rayon;
 use rayon::prelude::*;
 
 pub async fn init_db() {
-    lazy_static::initialize(&BTREE);
+    lazy_static::initialize(&KEYS_MAP);
+    lazy_static::initialize(&KV_BTREE);
     lazy_static::initialize(&JSON_BTREE);
     lazy_static::initialize(&GEO_BTREE);
     lazy_static::initialize(&GEO_RTREE);
@@ -308,7 +371,7 @@ pub async fn init_db() {
 }
 
 fn clear_db() {
-    let b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let b_map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     let k_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
     let deleted_keys_map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
     let r_map: Arc<DashMap<String, RTree<GeoPoint2D>>> = GEO_RTREE.clone();
@@ -346,11 +409,12 @@ pub fn last_save(_cmd: &LastSaveCmd) -> String {
 }
 
 use crate::network::Context;
+use self::dashmap::mapref::one::Ref;
 
 pub fn auth(context: &mut Context, cmd: &AuthCmd) -> String {
     context.client_auth_key = Some(cmd.arg_password.to_owned());
     if !context.auth_is_required {
-        return print_ok()
+        return print_ok();
     }
 
     let auth_key = match &context.auth_key {
@@ -376,7 +440,7 @@ pub fn auth(context: &mut Context, cmd: &AuthCmd) -> String {
         print_ok()
     } else {
         print_err("ERR auth failed")
-    }
+    };
 }
 
 pub fn bg_save(_cmd: &BGSaveCmd) -> String {
@@ -396,7 +460,7 @@ pub fn flush_db(_cmd: &FlushDBCmd) -> String {
 
 pub fn set(cmd: &SetCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
-    let mut map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
 
 
     if cmd.arg_exp > 0 {
@@ -405,24 +469,30 @@ pub fn set(cmd: &SetCmd) -> String {
         rem_map.insert(cmd.arg_key.to_owned(), cmd.arg_exp.to_owned() as i64 + timestamp);
     }
 
-    &map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned());
-
+    map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned());
+    insert_key(&cmd.arg_key.to_owned(), KeyType::KV);
     increment_mutation_counter();
     print_ok()
 }
 
 pub fn get_set(cmd: &GetSetCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
-    let mut map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let mut map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
+
+    if !is_key_valid_for_type(&cmd.arg_key.to_owned(), KeyType::KV) {
+        return print_wrong_type_err();
+    };
 
     let empty_string = String::new();
 
     return match &map.insert(cmd.arg_key.to_owned(), cmd.arg_value.to_owned()) {
         None => {
+            insert_key(&cmd.arg_key, KeyType::KV);
             increment_mutation_counter();
             print_string(&empty_string)
         }
         Some(s) => {
+            insert_key(&cmd.arg_key, KeyType::KV);
             match s {
                 ESValue::String(s) => {
                     increment_mutation_counter();
@@ -443,8 +513,12 @@ pub fn random_key(cmd: &RandomKeyCmd) -> String {
 }
 
 pub fn get(cmd: &GetCmd) -> String {
-    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
-    let key = &cmd.arg_key.to_owned();
+    let map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
+    let key = &cmd.arg_key;
+
+    if !is_key_valid_for_type(&cmd.arg_key, KeyType::KV) {
+        return print_wrong_type_err();
+    };
 
     return match map.get(key) {
         Some(r) => {
@@ -465,7 +539,7 @@ pub fn get(cmd: &GetCmd) -> String {
 }
 
 pub fn exists(cmd: &ExistsCmd) -> String {
-    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
 
     let mut found_count: i64 = 0;
     for key in &cmd.keys {
@@ -478,7 +552,7 @@ pub fn exists(cmd: &ExistsCmd) -> String {
 }
 
 pub fn info(_cmd: &InfoCmd) -> String {
-    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     //let map = map.into_read_only();
     let key_count = map.len();
     let info = format!("db0:keys={}\r\n", key_count);
@@ -486,23 +560,27 @@ pub fn info(_cmd: &InfoCmd) -> String {
 }
 
 pub fn db_size(_cmd: &DBSizeCmd) -> String {
-    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
-    //let map = map.into_read_only();
-    let key_count = map.len();
+    let key_count = KV_BTREE.len() + JSON_BTREE.len() + GEO_BTREE.len();
     print_integer(key_count as i64)
 }
 
 pub fn del(cmd: &DelCmd) -> String {
-    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    if !is_key_valid_for_type(&cmd.arg_key.to_owned(), KeyType::KV) {
+        return print_wrong_type_err();
+    };
+
+    let map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     let key = &cmd.arg_key.to_owned();
     return match map.remove(key) {
         Some(_r) => {
+            remove_key(key);
             let map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
             map.insert(key.to_owned());
             increment_mutation_counter();
             print_ok()
         }
         None => {
+            remove_key(&cmd.arg_key.to_owned());
             print_err("KEY_NOT_FOUND")
         }
     };
@@ -523,8 +601,12 @@ pub fn persist(cmd: &PersistCmd) -> String {
 }
 
 pub fn ttl(cmd: &TTLCmd) -> String {
+    if !is_key_valid_for_type(&cmd.arg_key.to_owned(), KeyType::KV) {
+        return print_integer(-1);
+    };
+
     let rem_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
-    let b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let b_map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     let key: &String = &cmd.arg_key;
 
     let mut out = 0;
@@ -545,12 +627,20 @@ pub fn ttl(cmd: &TTLCmd) -> String {
 }
 
 pub fn expire(cmd: &ExpireCmd) -> String {
+    if !is_key_valid_for_type(&cmd.arg_key.to_owned(), KeyType::KV) {
+        return print_integer(0);
+    };
+
     let rem_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
-    let b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let b_map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     let key: String = cmd.arg_key.to_owned();
     let value: i64 = cmd.arg_value;
 
     let out = 0;
+
+    if !is_key_valid_for_type(&key, KeyType::KV) {
+        return print_integer(out);
+    };
 
     if !b_map.contains_key(&key) {
         return print_integer(out);
@@ -565,11 +655,15 @@ pub fn expire(cmd: &ExpireCmd) -> String {
 
 pub fn expire_at(cmd: &ExpireAtCmd) -> String {
     let rem_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
-    let b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let b_map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     let key: String = cmd.arg_key.to_owned();
     let expire_at: i64 = cmd.arg_value;
 
     let out = 0;
+
+    if !is_key_valid_for_type(&key, KeyType::KV) {
+        return print_integer(out);
+    };
 
     if !b_map.contains_key(&key) {
         return print_integer(out);
@@ -581,10 +675,14 @@ pub fn expire_at(cmd: &ExpireAtCmd) -> String {
 }
 
 pub fn incr_by(cmd: &ExpireCmd) -> String {
-    let b_map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let b_map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     let key: String = cmd.arg_key.to_owned();
     let value: i64 = cmd.arg_value;
     let _default_v = 0;
+
+    if !is_key_valid_for_type(&key, KeyType::KV) {
+        return print_wrong_type_err();
+    };
 
     let result = match b_map.get_mut(&key) {
         None => {
@@ -618,7 +716,7 @@ pub fn incr_by(cmd: &ExpireCmd) -> String {
 }
 
 pub fn keys(cmd: &KeysCmd) -> String {
-    let map: Arc<DashMap<String, ESValue>> = BTREE.clone();
+    let map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
     //let map = map.into_read_only();
     let pattern_marcher = match Pattern::new(&cmd.pattern) {
         Ok(t) => t,
@@ -645,6 +743,10 @@ pub fn geo_add(cmd: &GeoAddCmd) -> String {
 
     let map: Arc<DashMap<String, HashSet<GeoPoint2D>>> = GEO_BTREE.clone();
 
+    if !is_key_valid_for_type(&cmd.arg_key.to_owned(), KeyType::GEO) {
+        return print_wrong_type_err();
+    };
+
 
     let mut point_map: HashSet<GeoPoint2D> = HashSet::new();
     if map.contains_key(&cmd.arg_key) {
@@ -660,27 +762,7 @@ pub fn geo_add(cmd: &GeoAddCmd) -> String {
         let tag = tag.to_owned();
         let lat = lat.to_owned();
         let lng = lng.to_owned();
-
-
-        let hash = match geohash::encode(Coordinate { x: lng, y: lat }, 10) {
-            Ok(t) => t,
-            Err(e) => {
-                is_valid_geo_point = false;
-                invalid_geo_point_msg = format!("{}", e);
-                return;
-            }
-        };
-
-        if !is_valid_geo_point {
-            return;
-        }
-
-        let point = GeoPoint2D {
-            tag,
-            x_cord: lat,
-            y_cord: lng,
-            hash,
-        };
+        let point = GeoPoint2D::with_cord(tag, lat, lng);
         point_map.insert(point);
     });
 
@@ -700,6 +782,7 @@ pub fn geo_add(cmd: &GeoAddCmd) -> String {
     map.insert(cmd.arg_key.to_owned(), point_map);
     r_map.insert(cmd.arg_key.to_owned(), RTree::bulk_load(bulk_geo_hash_load));
 
+    insert_key(&cmd.arg_key.to_owned(), KeyType::GEO);
     increment_mutation_counter();
     print_ok()
 }
@@ -719,15 +802,10 @@ pub fn geo_hash(cmd: &GeoHashCmd) -> String {
     let mut geo_hashes: Vec<&String> = vec![];
 
     for s in &cmd.items {
-        let test_geo = GeoPoint2D {
-            tag: s.to_owned(),
-            x_cord: 0.0,
-            y_cord: 0.0,
-            hash: "".to_string(),
-        };
+        let test_geo = GeoPoint2D::new(s.to_owned());
         match geo_point_hash_set.get(&test_geo) {
-            Some(t) => {
-                geo_hashes.push(&t.hash)
+            Some(point) => {
+                geo_hashes.push(point.hash());
             }
             None => {
                 geo_hashes.push(&empty_string)
@@ -749,12 +827,7 @@ pub fn geo_dist(cmd: &GeoDistCmd) -> String {
             return print_err("KEY_NOT_FOUND");
         }
     };
-    let comp = GeoPoint2D {
-        tag: cmd.arg_mem_1.to_owned(),
-        x_cord: 0.0,
-        y_cord: 0.0,
-        hash: "".to_string(),
-    };
+    let comp = GeoPoint2D::new(cmd.arg_mem_1.to_owned());
     let member_1 = match geo_point_hash_set.get(&comp) {
         Some(t) => {
             t
@@ -763,12 +836,7 @@ pub fn geo_dist(cmd: &GeoDistCmd) -> String {
             return print_err("ERR member 1 not found");
         }
     };
-    let comp = GeoPoint2D {
-        tag: cmd.arg_mem_2.to_owned(),
-        x_cord: 0.0,
-        y_cord: 0.0,
-        hash: "".to_string(),
-    };
+    let comp = GeoPoint2D::new(cmd.arg_mem_2.to_owned());
     let member_2 = match geo_point_hash_set.get(&comp) {
         Some(t) => {
             t
@@ -778,8 +846,8 @@ pub fn geo_dist(cmd: &GeoDistCmd) -> String {
         }
     };
 
-    let distance = util::haversine_distance(Location { latitude: member_1.x_cord, longitude: member_1.y_cord },
-                                            Location { latitude: member_2.x_cord, longitude: member_2.y_cord },
+    let distance = util::haversine_distance(Location { latitude: member_1.x_cord(), longitude: member_1.y_cord() },
+                                            Location { latitude: member_2.x_cord(), longitude: member_2.y_cord() },
                                             cmd.arg_unit.clone());
     print_string(&distance.to_string())
 }
@@ -822,7 +890,7 @@ pub fn geo_radius(cmd: &GeoRadiusCmd) -> String {
                 Units::Meters => dist,
             };
 
-            let string_arr: Vec<String> = vec![point.tag.to_owned(), point.hash.to_owned(), dist.to_string()];
+            let string_arr: Vec<String> = vec![point.tag.to_owned(), point.hash().to_owned(), dist.to_string()];
             &item_string_arr.push(string_arr);
         }
     }
@@ -848,12 +916,7 @@ pub fn geo_radius_by_member(cmd: &GeoRadiusByMemberCmd) -> String {
         }
     };
 
-    let comp = GeoPoint2D {
-        tag: cmd.member.to_owned(),
-        x_cord: 0.0,
-        y_cord: 0.0,
-        hash: "".to_string(),
-    };
+    let comp = GeoPoint2D::new(cmd.member.to_owned());
     let member = match geo_point_hash_set.get(&comp) {
         Some(t) => {
             t
@@ -865,8 +928,8 @@ pub fn geo_radius_by_member(cmd: &GeoRadiusByMemberCmd) -> String {
 
     let cmd = GeoRadiusCmd {
         arg_key: cmd.arg_key.to_owned(),
-        arg_lng: member.y_cord,
-        arg_lat: member.x_cord,
+        arg_lng: member.y_cord(),
+        arg_lat: member.x_cord(),
         arg_radius: cmd.arg_radius,
         arg_unit: cmd.arg_unit,
         arg_order: cmd.arg_order,
@@ -891,15 +954,10 @@ pub fn geo_pos(cmd: &GeoPosCmd) -> String {
     let mut points_array: Vec<Vec<String>> = vec![];
 
     for s in &cmd.items {
-        let test_geo = GeoPoint2D {
-            tag: s.to_owned(),
-            x_cord: 0.0,
-            y_cord: 0.0,
-            hash: "".to_string(),
-        };
+        let test_geo = GeoPoint2D::new(s.to_owned());
         match geo_point_hash_set.get(&test_geo) {
             Some(t) => {
-                let point_array: Vec<String> = vec![t.x_cord.to_string(), t.y_cord.to_string()];
+                let point_array: Vec<String> = vec![t.x_cord().to_string(), t.y_cord().to_string()];
                 points_array.push(point_array)
             }
             None => {
@@ -920,6 +978,7 @@ pub fn geo_del(cmd: &GeoDelCmd) -> String {
     }
     r_map.remove(&cmd.arg_key);
     map.remove(&cmd.arg_key);
+    remove_key(&cmd.arg_key);
 
     increment_mutation_counter();
     print_ok()
@@ -941,12 +1000,7 @@ pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
     };
 
     for s in &cmd.items {
-        let comp = GeoPoint2D {
-            tag: s.to_owned(),
-            x_cord: 0.0,
-            y_cord: 0.0,
-            hash: "".to_string(),
-        };
+        let comp = GeoPoint2D::new(s.to_owned());
 
         geo_point_hash_set.remove(&comp);
     }
@@ -954,6 +1008,7 @@ pub fn geo_remove(cmd: &GeoRemoveCmd) -> String {
     if geo_point_hash_set.is_empty() {
         map.remove(&cmd.arg_key);
         r_map.remove(&cmd.arg_key);
+        remove_key(&cmd.arg_key);
         increment_mutation_counter();
         return print_ok();
     }
@@ -989,12 +1044,7 @@ pub fn geo_json(cmd: &GeoJsonCmd) -> String {
     let mut geo_arr: Vec<GeoPoint2D> = vec![];
 
     for s in &cmd.items {
-        let test_geo = GeoPoint2D {
-            tag: s.to_owned(),
-            x_cord: 0.0,
-            y_cord: 0.0,
-            hash: "".to_string(),
-        };
+        let test_geo = GeoPoint2D::new(s.to_owned());
         match geo_point_hash_set.get(&test_geo) {
             Some(t) => {
                 geo_arr.push(t.to_owned())
@@ -1022,6 +1072,10 @@ pub fn jset_raw(cmd: &JSetRawCmd) -> String {
 }
 
 pub fn jset(cmd: &JSetCmd) -> String {
+    if !is_key_valid_for_type(&cmd.arg_key.to_owned(), KeyType::JSON) {
+        return print_wrong_type_err();
+    };
+
     let map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
 
     return match map.get_mut(&cmd.arg_key) {
@@ -1040,6 +1094,7 @@ pub fn jset(cmd: &JSetCmd) -> String {
                 return print_err("Error Saving values");
             }
             map.insert(cmd.arg_key.to_owned(), json);
+            insert_key(&cmd.arg_key.to_owned(), KeyType::JSON);
             increment_mutation_counter();
             return print_ok();
         }
@@ -1066,8 +1121,13 @@ pub fn jset(cmd: &JSetCmd) -> String {
 }
 
 pub fn jmerge(cmd: &JMergeCmd) -> String {
+    if !is_key_valid_for_type(&cmd.arg_key.to_owned(), KeyType::GEO) {
+        return print_wrong_type_err();
+    };
+
     let null_value = Value::Null;
     let map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
+
 
     let mut value: Value = match serde_json::from_str(&cmd.arg_value) {
         Ok(t) => t,
@@ -1087,6 +1147,7 @@ pub fn jmerge(cmd: &JMergeCmd) -> String {
 
     util::merge(&mut value, &prev_value);
     map.insert(cmd.arg_key.to_owned(), value);
+    insert_key(&cmd.arg_key.to_owned(), KeyType::JSON);
     increment_mutation_counter();
     print_ok()
 }
@@ -1150,6 +1211,7 @@ pub fn jdel(cmd: &JDelCmd) -> String {
     let _null_value = Value::Null;
     let map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
     map.remove(&cmd.arg_key);
+    remove_key(&cmd.arg_key);
     print_ok()
 }
 

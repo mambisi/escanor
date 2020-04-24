@@ -69,9 +69,9 @@ pub trait Command {
     fn execute(&self, context: &mut Context) -> String;
 }
 
-pub fn auth_context<T>(context: &mut Context,cmd : T, f : fn( T ) -> String ) -> String {
+pub fn auth_context<T>(context: &mut Context,fn_args : T, f : fn( T ) -> String ) -> String {
     if !context.auth_is_required {
-        return f(cmd)
+        return f(fn_args)
     }
 
     let auth_key = match &context.auth_key {
@@ -94,7 +94,7 @@ pub fn auth_context<T>(context: &mut Context,cmd : T, f : fn( T ) -> String ) ->
         context.client_authenticated = false
     }
     return if context.client_authenticated {
-        f(cmd)
+        f(fn_args)
     } else {
         print_err("ERR auth failed")
     }

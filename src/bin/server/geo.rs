@@ -5,6 +5,7 @@ use crate::util;
 use serde::{Serialize, Deserialize};
 use crate::printer::{JsonPrint, GeoJsonFeature};
 use serde_json::Value;
+use geohash::Coordinate;
 
 pub type Scalar = f64;
 
@@ -50,9 +51,78 @@ impl PointDistance for Circle
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeoPoint2D {
     pub tag: String,
-    pub x_cord: f64,
-    pub y_cord: f64,
-    pub hash: String,
+    pub data: Option<Value>,
+    x_cord: f64,
+    y_cord: f64,
+    hash: String,
+}
+
+
+impl GeoPoint2D {
+    pub fn new(tag: String) -> Self {
+        GeoPoint2D {
+            tag,
+            data: None,
+            x_cord: 0.0,
+            y_cord: 0.0,
+            hash: String::new(),
+        }
+    }
+    pub fn with_cord(tag: String, x_cord: f64, y_cord: f64) -> Self {
+        let mut geo_point = GeoPoint2D {
+            tag,
+            data: None,
+            x_cord,
+            y_cord,
+            hash: String::new(),
+        };
+        match geohash::encode(Coordinate { x: geo_point.x_cord, y: geo_point.y_cord }, 10) {
+            Ok(t) => geo_point.hash = t,
+            Err(e) => {}
+        };
+
+        geo_point
+    }
+    pub fn set_cord(&mut self, x_cord: f64, y_cord: f64) {
+        self.x_cord = x_cord;
+        self.y_cord = y_cord;
+
+        match geohash::encode(Coordinate { x: self.x_cord, y: self.y_cord }, 10) {
+            Ok(t) => self.hash = t,
+            Err(e) => {}
+        };
+    }
+
+    pub fn set_x_cord(&mut self, x_cord: f64) {
+        self.x_cord = x_cord;
+        match geohash::encode(Coordinate { x: self.x_cord, y: self.y_cord }, 10) {
+            Ok(t) => self.hash = t,
+            Err(e) => {}
+        };
+    }
+    pub fn set_y_cord(&mut self, y_cord: f64) {
+        self.y_cord = y_cord;
+        match geohash::encode(Coordinate { x: self.x_cord, y: self.y_cord }, 10) {
+            Ok(t) => self.hash = t,
+            Err(e) => {}
+        };
+    }
+
+    pub fn x_cord(&self) -> f64 {
+        self.x_cord
+    }
+
+    pub fn y_cord(&self) -> f64 {
+        self.y_cord
+    }
+
+    pub fn hash(&self) -> &String {
+        &self.hash
+    }
+
+    pub fn get_cord(&self) -> (f64, f64) {
+        (self.x_cord, self.y_cord)
+    }
 }
 
 impl RTreeObject for GeoPoint2D
@@ -93,7 +163,8 @@ impl JsonPrint for GeoPoint2D {
         {
               "type": "Feature",
               "properties": {
-                "name" : self.tag
+                "name" : self.tag,
+                "data" : self.data
               },
               "geometry": {
                 "type": "Point",
