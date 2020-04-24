@@ -496,7 +496,27 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         return Ok(Box::new(JDelCmd {
             arg_key: arg_key.to_owned(),
         }));
-    } else if cmd == "jincrby" {
+    }
+    else if cmd == "jrem" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let mut items_after_key: Vec<String> = vec![];
+
+        while let Some(i) = itr.next() {
+            items_after_key.push(i.to_owned());
+        }
+
+        if items_after_key.is_empty() {
+            return Err(error::SyntaxError);
+        }
+
+        return Ok(Box::new(JRemCmd {
+            arg_key: arg_key.to_owned(),
+            arg_paths: items_after_key
+        }));
+    }
+    else if cmd == "jincrby" {
         let arg_key = itr.next().unwrap_or(&empty_string);
         if arg_key.is_empty() { return Err(error::SyntaxError); }
 

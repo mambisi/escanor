@@ -44,6 +44,10 @@ extern crate nanoid;
 
 use nanoid::nanoid;
 
+extern crate rayon;
+
+use rayon::prelude::*;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ESValue {
     String(String),
@@ -295,10 +299,6 @@ async fn save_db() {
     };
 }
 
-extern crate rayon;
-
-use rayon::prelude::*;
-
 pub async fn init_db() {
     lazy_static::initialize(&KEYS_MAP);
     lazy_static::initialize(&KV_BTREE);
@@ -409,7 +409,8 @@ pub fn last_save(_cmd: &LastSaveCmd) -> String {
 }
 
 use crate::network::Context;
-use self::dashmap::mapref::one::Ref;
+use self::dashmap::mapref::one::{Ref, RefMut};
+use self::json_dotpath::Error;
 
 pub fn auth(context: &mut Context, cmd: &AuthCmd) -> String {
     context.client_auth_key = Some(cmd.arg_password.to_owned());
@@ -1213,6 +1214,30 @@ pub fn jdel(cmd: &JDelCmd) -> String {
     map.remove(&cmd.arg_key);
     remove_key(&cmd.arg_key);
     print_ok()
+}
+
+pub fn jrem(cmd: &JRemCmd) -> String {
+    let _null_value = Value::Null;
+    let map: Arc<DashMap<String, Value>> = JSON_BTREE.clone();
+
+    let mut removal_count = 0;
+
+    match map.get_mut(&cmd.arg_key) {
+        None => {
+
+        },
+        Some(mut entry) => {
+            &cmd.arg_paths.iter().for_each(|s|{
+                match entry.value_mut().dot_remove(s){
+                    Ok(_) => {
+                        removal_count += 1;
+                    },
+                    Err(_) => {},
+                };
+            });
+        },
+    }
+    print_integer(removal_count)
 }
 
 

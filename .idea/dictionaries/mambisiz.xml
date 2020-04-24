@@ -12,8 +12,10 @@
       <w>georemove</w>
       <w>jdel</w>
       <w>jget</w>
+      <w>jincr</w>
       <w>jmerge</w>
       <w>jpath</w>
+      <w>jrem</w>
       <w>jset</w>
     </words>
   </dictionary>

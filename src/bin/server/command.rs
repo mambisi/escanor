@@ -498,6 +498,20 @@ impl Command for JDelCmd {
     }
 }
 
+
+#[derive(Debug)]
+pub struct JRemCmd {
+    pub arg_key: String,
+    pub arg_paths : Vec<String>
+}
+
+impl Command for JRemCmd {
+    fn execute(&self, context: &mut Context) -> String {
+        auth_context(context,self,db::jrem)
+    }
+}
+
+
 #[derive(Debug)]
 pub struct JIncrByCmd {
     pub arg_key: String,
