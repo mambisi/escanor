@@ -44,8 +44,6 @@ fn process_socket(socket: TcpStream){
 
         use crate::config;
 
-        let null_value = Value::Null;
-
         let conf_file = config::conf();
 
         let require_auth = match &conf_file.server{
@@ -95,7 +93,6 @@ fn process_socket(socket: TcpStream){
                     let buf: BytesMut = BytesMut::from(response_message.as_bytes());
                     let (f,_) = decode_bytes(&buf).unwrap();
                     lines.send(f.unwrap_or(Frame::Error("Internal Error".to_owned()))).await;
-                    //lines.send(Frame::SimpleString("Ok".to_string())).await;
                 }
                 Err(err) => {
                     debug!("Disconnected Context: {:?}", context);

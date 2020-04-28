@@ -2,7 +2,9 @@ use crate::geo::{Circle, GeoPoint2D};
 use crate::unit_conv::*;
 use std::collections::{BTreeMap, HashSet, HashMap};
 use std::sync::{Arc, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::atomic::{AtomicBool, Ordering, AtomicUsize, AtomicI64, AtomicU64};
 use std::sync::RwLock;
+
 use rstar::RTree;
 use crate::{util, file_dirs};
 use crate::command::*;
@@ -86,8 +88,9 @@ impl ESValue {
 }
 
 lazy_static! {
-    //Load balancing
-    static ref SAVE_IN_PROCEES : Arc<RwLock<u8>> = Arc::new(RwLock::new(0));
+
+    static ref SAVE_IN_PROCEES : AtomicBool = AtomicBool::new(false);
+    //Key managers
     static ref KEYS_REM_EX_HASH : Arc<DashMap<String, i64>> = Arc::new(DashMap::new());
     static ref DELETED_KEYS_LIST : Arc<DashSet<String>> = Arc::new(DashSet::new());
     //Data
@@ -96,10 +99,10 @@ lazy_static! {
     static ref JSON_BTREE : Arc<DashMap<String, Value>> = Arc::new(DashMap::new());
     static ref GEO_BTREE : Arc<DashMap<String, HashSet<GeoPoint2D>>> = Arc::new(DashMap::new());
     static ref GEO_RTREE : Arc<DashMap<String, RTree<GeoPoint2D>>> = Arc::new(DashMap::new());
-    //Time keepers
-    static ref LAST_SAVE_TIME : Arc<RwLock<i64>> = Arc::new(RwLock::new(0));
-    static ref LAST_SAVE_DURATION : Arc<RwLock<u64>> = Arc::new(RwLock::new(0));
-    static ref MUTATION_COUNT_SINCE_SAVE : Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
+    //Progress
+    static ref LAST_SAVE_TIME : AtomicI64 = AtomicI64::new(0);
+    static ref LAST_SAVE_DURATION : AtomicU64 = AtomicU64::new(0);
+    static ref MUTATION_COUNT_SINCE_SAVE : AtomicUsize = AtomicUsize::new(0);
 }
 
 
@@ -111,19 +114,46 @@ struct Database {
 }
 
 fn increment_mutation_counter() {
-    let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
-    *mutation_counter += 1;
+    MUTATION_COUNT_SINCE_SAVE.fetch_add(1, Ordering::Relaxed);
 }
 
-fn increment_mutation_counter_by(u: usize) {
-    let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
-    *mutation_counter += u;
+fn increment_mutation_counter_by(size: usize) {
+    MUTATION_COUNT_SINCE_SAVE.fetch_add(size, Ordering::Relaxed);
 }
 
 fn reset_mutation_counter() {
-    let mut mutation_counter: RwLockWriteGuard<usize> = MUTATION_COUNT_SINCE_SAVE.write().unwrap();
-    *mutation_counter = 0;
+    MUTATION_COUNT_SINCE_SAVE.store(0, Ordering::Relaxed);
 }
+
+
+fn get_mutation_count() -> usize {
+    MUTATION_COUNT_SINCE_SAVE.load(Ordering::Relaxed)
+}
+
+fn set_last_save_time(timestamp: i64) {
+    LAST_SAVE_TIME.store(timestamp, Ordering::SeqCst)
+}
+
+fn get_last_save_time() -> i64 {
+    LAST_SAVE_TIME.load(Ordering::SeqCst)
+}
+
+fn set_last_save_time_duration(timestamp: u64) {
+    LAST_SAVE_DURATION.store(timestamp, Ordering::SeqCst)
+}
+
+fn get_last_save_time_duration() -> u64 {
+    LAST_SAVE_DURATION.load(Ordering::SeqCst)
+}
+
+fn set_save_in_progress(b : bool){
+    SAVE_IN_PROCEES.store(b, Ordering::SeqCst)
+}
+
+fn is_save_in_progress() -> bool{
+    SAVE_IN_PROCEES.load(Ordering::SeqCst)
+}
+
 
 fn is_key_valid_for_type(key: &str, key_type: KeyType) -> bool {
     let keys_map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
@@ -288,8 +318,7 @@ async fn save_db() {
     match file.write_all(&content).await {
         Ok(_) => {
             reset_mutation_counter();
-            let mut last_save_time: RwLockWriteGuard<i64> = LAST_SAVE_TIME.write().unwrap();
-            *last_save_time = Utc::now().timestamp();
+            set_last_save_time(Utc::now().timestamp());
             return;
         }
         Err(e) => {
@@ -358,8 +387,7 @@ pub async fn init_db() {
             interval.tick().await;
             let mut mutations = 0;
             {
-                let mutation_count_since_save: RwLockReadGuard<usize> = MUTATION_COUNT_SINCE_SAVE.read().unwrap();
-                mutations = *mutation_count_since_save;
+                mutations = get_mutation_count();
             }
 
             let _current_ts = Utc::now().timestamp();
@@ -371,6 +399,7 @@ pub async fn init_db() {
 }
 
 fn clear_db() {
+    let keys_map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
     let b_map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
     let k_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
     let deleted_keys_map: Arc<DashSet<String>> = DELETED_KEYS_LIST.clone();
@@ -385,6 +414,7 @@ fn clear_db() {
     increment_mutation_counter_by(json_map.len());
     //b_map.len();
 
+    keys_map.clear();
     b_map.clear();
     k_map.clear();
     deleted_keys_map.clear();
@@ -404,8 +434,8 @@ fn remove_expired_keys() {
 
 pub fn last_save(_cmd: &LastSaveCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
-    let last_save_time: RwLockReadGuard<i64> = LAST_SAVE_TIME.read().unwrap();
-    print_integer(*last_save_time)
+    let last_save_time = get_last_save_time();
+    print_integer(last_save_time)
 }
 
 use crate::network::Context;
@@ -1223,19 +1253,17 @@ pub fn jrem(cmd: &JRemCmd) -> String {
     let mut removal_count = 0;
 
     match map.get_mut(&cmd.arg_key) {
-        None => {
-
-        },
+        None => {}
         Some(mut entry) => {
-            &cmd.arg_paths.iter().for_each(|s|{
-                match entry.value_mut().dot_remove(s){
+            &cmd.arg_paths.iter().for_each(|s| {
+                match entry.value_mut().dot_remove(s) {
                     Ok(_) => {
                         removal_count += 1;
-                    },
-                    Err(_) => {},
+                    }
+                    Err(_) => {}
                 };
             });
-        },
+        }
     }
     print_integer(removal_count)
 }
