@@ -493,7 +493,6 @@ pub fn set(cmd: &SetCmd) -> String {
     //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
     let map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
 
-
     if cmd.arg_exp > 0 {
         let timestamp = Utc::now().timestamp();
         let rem_map: Arc<DashMap<String, i64>> = KEYS_REM_EX_HASH.clone();
