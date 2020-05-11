@@ -9,7 +9,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_json;
 
-
 //modules
 mod network;
 mod db;
@@ -38,9 +37,11 @@ const APP_HOMEPAGE: &str = "https://github.com/mambisi/escanor";
 const APP_ABOUT: &str = "Escanor is key value in memory database with disk store developed by ByteQuery Ltd.";
 
 extern crate app_dirs2;
+
 use app_dirs2::*;
 
-const APP_INFO: AppInfo = AppInfo{name: "escanor", author: "ByteQuery"};
+const APP_INFO: AppInfo = AppInfo { name: "escanor", author: "ByteQuery" };
+
 
 #[tokio::main]
 async fn main() {
@@ -51,6 +52,8 @@ async fn main() {
     } else {
         default_log_flag = "info";
     }
+    env::set_var("RUST_LOG", default_log_flag);
+    env_logger::init();
 
 
     let matches = App::new(APP_NAME)
@@ -63,19 +66,23 @@ async fn main() {
             .help("sets the tcp port for the server")
             .default_value("6379")
             .takes_value(true))
+        .arg(Arg::with_name("RESET")
+            .long("reset")
+            .help("resets the config file")
+            .takes_value(false))
         .get_matches();
 
     let host = "127.0.0.1";
     let port = matches.value_of("PORT").unwrap();
 
-    let addrs = &format!("{}:{}", host, port);
+    if matches.is_present("RESET") {
+        config::write_default_config_file().await;
+    }
 
-    env::set_var("RUST_LOG", default_log_flag);
-    env_logger::init();
+    let addrs = &format!("{}:{}", host, port);
 
     info!("PID: {}", std::process::id());
     config::load_conf(true).await;
     db::init_db().await;
     network::start_up(addrs).await;
-    //network::start_up_ws(addrs)
 }

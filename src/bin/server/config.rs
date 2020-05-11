@@ -4,6 +4,8 @@ use std::sync::{RwLock, Arc, RwLockReadGuard, RwLockWriteGuard};
 
 use serde::{Serialize, Deserialize};
 
+use std::process;
+
 lazy_static! {
     static ref CONFIG_HASH_MAP : Arc<RwLock<HashMap<String, String>>> = Arc::new(RwLock::new(HashMap::new()));
 }
@@ -33,10 +35,10 @@ pub struct NetConf {
 pub struct Conf {
     pub database: DatabaseConf,
     pub network: NetConf,
-    pub server: Option<ServerConf>
+    pub server: Option<ServerConf>,
 }
 
-use tokio::io::{AsyncReadExt,AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::fs::{OpenOptions, File};
 
 use serde_yaml;
@@ -45,7 +47,7 @@ use crate::file_dirs;
 use nom::AsBytes;
 use serde_yaml::{Value, Mapping};
 
-pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
+pub async fn load_conf(force_rewrite: bool) -> Result<(), String> {
     debug!("Opening config...");
     let path = match file_dirs::config_file_path() {
         None => {
@@ -61,9 +63,9 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
             Err(e) => { return Err(e); }
         };
         load_conf(false);
-    }else if !path.exists() && !force_rewrite {
+    } else if !path.exists() && !force_rewrite {
         panic!("Config file not found");
-        return Err("Config file not found".to_string())
+        return Err("Config file not found".to_string());
     }
     //path.join("");
     //rewrite()
@@ -84,7 +86,11 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
             return Err("Error".to_owned());
         }
     };
-    let conf: Conf = serde_yaml::from_slice(&contents).unwrap();
+    let conf: Conf = serde_yaml::from_slice(&contents).unwrap_or_else(|err| {
+        eprintln!("Error loading config file, run with --reset to reset config file.");
+        process::exit(1);
+    });
+
     let conf_map = conf.to_map();
 
     let mut config_map: RwLockWriteGuard<HashMap<String, String>> = CONFIG_HASH_MAP.write().unwrap();
@@ -94,7 +100,7 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(),String> {
     conf_map.iter().for_each(|(k, v)| {
         config_map.insert(k.to_owned(), v.to_owned());
     });
-    info!("Configuration loaded from:{}",path.as_os_str().to_str().unwrap());
+    info!("Configuration loaded from:{}", path.as_os_str().to_str().unwrap());
     Ok(())
 }
 
@@ -116,15 +122,15 @@ impl Conf {
         let null_value = Value::Null;
 
         match &self.server {
-            None => {},
+            None => {}
             Some(server_conf) => {
-               match &server_conf.require_auth {
-                   None => {},
-                   Some(t) => {
-                       map.insert("server.require_auth".to_owned(), t.to_owned());
-                   },
-               }
-            },
+                match &server_conf.require_auth {
+                    None => {}
+                    Some(t) => {
+                        map.insert("server.require_auth".to_owned(), t.to_owned());
+                    }
+                }
+            }
         };
 
         map
@@ -153,20 +159,20 @@ impl Conf {
 
 
         let server_conf = ServerConf {
-            require_auth: match map.get("server.require_auth"){
+            require_auth: match map.get("server.require_auth") {
                 None => {
                     None
-                },
+                }
                 Some(t) => {
                     Some(t.to_owned())
-                },
+                }
             }
         };
 
         Conf {
             database: db_conf,
             network: net_conf,
-            server : Some(server_conf)
+            server: Some(server_conf),
         }
     }
 }
@@ -223,20 +229,20 @@ network:
   max_connections: 0
 # uncomment require_auth to to require authentication for server communication
 server:
-  require_auth:#set your password here
+  #require_auth: mypassword
 "#;
+    debug!("Resetting configuration file");
     let path = match file_dirs::config_file_path() {
         None => { return Err("Error reading file path".to_owned()); }
         Some(p) => { p }
     };
-    let mut file = match OpenOptions::new().write(true).create(true).open(path).await {
+    let mut file = match OpenOptions::new().write(true).create(true).truncate(true).open(path).await {
         Err(e) => {
             println!("{}", e);
             return Err("Creating reading file path".to_owned());
         }
         Ok(file) => file,
     };
-
 
     let buf = DEFAULT_CONFIG_FILE.as_bytes();
     return match file.write_all(&buf).await {
