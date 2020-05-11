@@ -155,9 +155,9 @@ fn is_save_in_progress() -> bool{
 }
 
 
-fn is_key_valid_for_type(key: &str, key_type: KeyType) -> bool {
+fn is_key_valid_for_type( key: &str, key_type: KeyType) -> bool {
     let keys_map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
-    return match keys_map.get(key) {
+    return match &keys_map.get(key) {
         None => {
             true
         }
@@ -168,6 +168,11 @@ fn is_key_valid_for_type(key: &str, key_type: KeyType) -> bool {
 }
 
 fn insert_key(key: &String, key_type: KeyType) {
+    let keys_map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
+    keys_map.insert(key.to_owned(), key_type);
+}
+
+fn insert_key_with_deletion(key: &String, key_type: KeyType) {
     if !is_key_valid_for_type(key, key_type.to_owned()) {
         match key_type {
             KeyType::KV => {
@@ -196,8 +201,7 @@ fn insert_key(key: &String, key_type: KeyType) {
             }
         }
     }
-    let keys_map: Arc<DashMap<String, KeyType>> = KEYS_MAP.clone();
-    keys_map.insert(key.to_owned(), key_type);
+    insert_key(key, key_type);
 }
 
 fn remove_key(key: &String) {
@@ -244,19 +248,19 @@ async fn load_db() {
 
     &saved_db.geo_tree.iter().for_each(|data| {
         geo_btree.insert(data.key().to_owned(), data.value().to_owned());
-        insert_key(&data.key(), KeyType::GEO);
+        insert_key_with_deletion(&data.key(), KeyType::GEO);
     }
     );
 
     &saved_db.json_btree.iter().for_each(|data| {
         json_btree.insert(data.key().to_owned(), data.value().to_owned());
-        insert_key(&data.key(), KeyType::JSON);
+        insert_key_with_deletion(&data.key(), KeyType::JSON);
     }
     );
 
     &saved_db.btree.iter().for_each(|data| {
         btree.insert(data.key().to_owned(), data.value().to_owned());
-        insert_key(&data.key(), KeyType::KV);
+        insert_key_with_deletion(&data.key(), KeyType::KV);
     }
     );
 
@@ -490,7 +494,6 @@ pub fn flush_db(_cmd: &FlushDBCmd) -> String {
 
 
 pub fn set(cmd: &SetCmd) -> String {
-    //let arc: Arc<RwLock<BTreeMap<String, ESRecord>>> = BTREE;
     let map: Arc<DashMap<String, ESValue>> = KV_BTREE.clone();
 
     if cmd.arg_exp > 0 {
