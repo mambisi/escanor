@@ -22,6 +22,23 @@ pub fn config_file_path() -> Option<PathBuf> {
     Some(p)
 }
 
+pub fn dbs_path() -> Option<PathBuf> {
+
+    if cfg!(target_os = "linux") {
+        let mut  directory  = PathBuf::from("/usr/lib/escanor");
+        if !directory.exists() {
+            std::fs::create_dir_all(directory.clone());
+        }
+        return Some(directory);
+    }
+
+    let p = match create_file_path(AppDataType::UserCache, "dump", "esdb") {
+        None => { return None; }
+        Some(p) => { p }
+    };
+    Some(p)
+}
+
 pub fn db_file_path() -> Option<PathBuf> {
 
     if cfg!(target_os = "linux") {

@@ -2,7 +2,7 @@ use crate::command::*;
 use crate::{error, util, unit_conv};
 use serde_json::{Value};
 
-use crate::db::ESValue;
+use crate::db::Data;
 
 
 pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, error::SyntaxError> {
@@ -18,7 +18,9 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
 
     if cmd == "ping" {
         return Ok(Box::new(PingCmd));
-    } else if cmd == "lastsave" {
+    }
+    /*
+    else if cmd == "lastsave" {
         return Ok(Box::new(LastSaveCmd));
     }else if cmd == "dbsize" {
         return Ok(Box::new(DBSizeCmd));
@@ -30,7 +32,12 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         return Ok(Box::new(BGSaveCmd));
     } else if cmd == "flushdb" {
         return Ok(Box::new(FlushDBCmd));
-    }else if cmd == "auth" {
+    } */
+    else if cmd == "randomkey" {
+        return Ok(Box::new(RandomKeyCmd));
+    }
+    else if cmd == "auth" {
+
         let arg_password = itr.next().unwrap_or(&empty_string);
         if arg_password.is_empty() { return Err(error::SyntaxError); }
         return Ok(Box::new(AuthCmd {
@@ -47,9 +54,9 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
 
         let es_val = if util::is_integer(arg_value){
             let i = arg_value.parse::<i64>().unwrap();
-            ESValue::Int(i)
+            Data::Int(i)
         }else {
-            ESValue::String(arg_value.to_owned())
+            Data::String(arg_value.to_owned())
         };
 
         let arg_ex_cmd = &itr.next().unwrap_or(&empty_string).to_lowercase();
@@ -78,9 +85,9 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
 
         let es_val = if util::is_integer(arg_value){
             let i = arg_value.parse::<i64>().unwrap();
-            ESValue::Int(i)
+            Data::Int(i)
         }else {
-            ESValue::String(arg_value.to_owned())
+            Data::String(arg_value.to_owned())
         };
 
         return Ok(Box::new(GetSetCmd {

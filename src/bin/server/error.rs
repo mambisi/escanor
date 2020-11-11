@@ -15,6 +15,11 @@ pub struct CustomMessageError{
     pub detail : String
 }
 
+#[derive(Debug)]
+pub struct DatabaseError{
+    pub detail : String
+}
+
 
 impl fmt::Display for SyntaxError {
 
@@ -77,6 +82,29 @@ impl error::Error for CustomMessageError {
 impl CustomMessageError {
     pub fn new(detail : &str) -> CustomMessageError{
         CustomMessageError {
+            detail : detail.to_owned()
+        }
+    }
+}
+
+
+// -Mark: Database Error
+impl error::Error for DatabaseError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        // Generic error, underlying cause isn't tracked.
+        None
+    }
+}
+
+impl fmt::Display for DatabaseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.detail)
+    }
+}
+
+impl DatabaseError {
+    pub fn new(detail : &str) -> DatabaseError{
+        DatabaseError {
             detail : detail.to_owned()
         }
     }

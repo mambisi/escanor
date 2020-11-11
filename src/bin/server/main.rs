@@ -9,6 +9,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_json;
 
+extern crate regex;
+
 //modules
 mod network;
 mod db;
@@ -83,6 +85,6 @@ async fn main() {
 
     info!("PID: {}", std::process::id());
     config::load_conf(true).await;
-    db::init_db().await;
+    db::init().await;
     network::start_up(addrs).await;
 }

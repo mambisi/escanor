@@ -12,7 +12,6 @@ use crate::unit_conv::Units;
 
 use redis_protocol::types::Frame;
 use serde_json::Value;
-use crate::db::ESValue;
 use crate::printer::*;
 
 pub fn compile_frame(frame: Frame) -> Result<Box<dyn Command>, error::SyntaxError> {
@@ -63,15 +62,16 @@ pub fn compile_resp(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> 
 
 
 use crate::network::Context;
+use crate::db::Data;
 
 pub trait Command {
     //fn execute(&self, db: &db::DB);
     fn execute(&self, context: &mut Context) -> String;
 }
 
-pub fn auth_context<T>(context: &mut Context, fn_args: T, f: fn(T) -> String) -> String {
+pub fn auth_context<T>(context: &mut Context, fn_args: T, f: fn(context : &Context,T) -> String) -> String {
     if !context.auth_is_required {
-        return f(fn_args);
+        return f(context,fn_args);
     }
 
     let auth_key = match &context.auth_key {
@@ -94,7 +94,7 @@ pub fn auth_context<T>(context: &mut Context, fn_args: T, f: fn(T) -> String) ->
         context.client_authenticated = false
     }
     return if context.client_authenticated {
-        f(fn_args)
+        f(context, fn_args)
     } else {
         print_err("ERR auth failed")
     };
@@ -148,9 +148,11 @@ pub type JSetArgItem = (String, Value);
 
 make_command!(PingCmd;);
 make_command!(AuthCmd {arg_password : String});
+/*
 make_command!(LastSaveCmd; -> db::last_save);
 make_command!(BGSaveCmd; -> db::bg_save );
 make_command!(FlushDBCmd; -> db::flush_db);
+ */
 make_command!(RandomKeyCmd; -> db::random_key);
 make_command!(InfoCmd; -> db::info);
 make_command!(DBSizeCmd; -> db::db_size);
@@ -167,8 +169,8 @@ impl Command for AuthCmd {
 }
 
 //Key Value Commands
-make_command!(SetCmd{arg_key : String,arg_value : ESValue, arg_exp : u32} -> db::set);
-make_command!(GetSetCmd{arg_key : String, arg_value : ESValue} -> db::get_set);
+make_command!(SetCmd{arg_key : String,arg_value : Data, arg_exp : u32} -> db::set);
+make_command!(GetSetCmd{arg_key : String, arg_value : Data} -> db::get_set);
 make_command!(GetCmd{arg_key : String} -> db::get);
 make_command!(DelCmd{arg_key : String} -> db::del);
 make_command!(PersistCmd{arg_key : String} -> db::persist);

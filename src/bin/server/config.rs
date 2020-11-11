@@ -143,6 +143,7 @@ impl Conf {
 
         let default_d_save_after = String::from("60");
         let default_d_muts = String::from("4");
+        let default_d_name = String::from("escdb");
 
 
         let net_conf = NetConf {

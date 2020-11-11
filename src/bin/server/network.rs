@@ -24,6 +24,7 @@ use crate::command::Command;
 
 #[derive(Clone,Debug)]
 pub struct Context{
+    pub db : Option<String>,
     pub client_addr : SocketAddr,
     pub auth_is_required : bool,
     pub auth_key : Option<String>,
@@ -35,6 +36,7 @@ use std::net::{SocketAddr,Shutdown};
 use futures::io::Error;
 use serde_yaml::Value;
 use crate::config::ServerConf;
+use crate::config;
 
 fn process_socket(socket: TcpStream){
     // do work with socket here
@@ -42,34 +44,26 @@ fn process_socket(socket: TcpStream){
 
         let addrs : SocketAddr = socket.peer_addr().unwrap();
 
-        use crate::config;
-
         let conf_file = config::conf();
 
-        let require_auth = match &conf_file.server{
-            None => { None},
+        let auth_key = match &conf_file.server{
+            None => {
+                String::new()
+            },
             Some(server) => {
                 match &server.require_auth {
                     None => {
-                        None
+                        String::new()
                     },
-                    Some(t) => {
-                        Some(t)
+                    Some(auth) => {
+                        auth.to_owned()
                     },
                 }
             },
         };
 
-        let auth_key =  match require_auth {
-            None => {
-                String::new()
-            },
-            Some(t) => {
-                t.to_owned()
-            },
-        };
-
         let mut context = Context {
+            db : None,
             client_addr: addrs,
             auth_is_required : !auth_key.is_empty(),
             auth_key: if auth_key.is_empty() {None}else { Some(auth_key) },

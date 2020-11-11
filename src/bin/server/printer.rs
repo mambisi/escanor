@@ -69,7 +69,7 @@ pub fn print_string(str: &String) -> String {
     format!("{}{}{}{}{}", STRING_PREFIX, str.len(), CRLF, str, CRLF)
 }
 
-pub fn print_integer(int: i64) -> String {
+pub fn print_integer(int: &i64) -> String {
     format!("{}{}{}", INT_PREFIX, int, CRLF)
 }
 
