@@ -24,8 +24,6 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
     /*
     else if cmd == "lastsave" {
         return Ok(Box::new(LastSaveCmd));
-    }else if cmd == "dbsize" {
-        return Ok(Box::new(DBSizeCmd));
     }
     else if cmd == "randomkey" {
         return Ok(Box::new(RandomKeyCmd));
@@ -35,6 +33,9 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
     } else if cmd == "flushdb" {
         return Ok(Box::new(FlushDBCmd));
     } */
+    else if cmd == "dbsize" {
+        return Ok(Box::new(DBSizeCmd));
+    }
     else if cmd == "randomkey" {
         return Ok(Box::new(RandomKeyCmd));
     }

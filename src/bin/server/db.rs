@@ -39,6 +39,7 @@ use json_dotpath::DotPaths;
 // Special Keys
 const DATABASE_PATH_PREFIX: &str = "dbs/";
 const DEFAULT_DATABASE_PATH: &str = "dbs/db0";
+const DEFAULT_QUEUE_LOG_PATH: &str = "logs/queue";
 const DEFAULT_DATABASE_NAME: &str = "db0";
 
 lazy_static! {
@@ -59,14 +60,14 @@ trait RespResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GeoTree {
     rtree: RTree<GeoPoint2D>,
-    btree: HashSet<GeoPoint2D>,
+    hash: HashSet<GeoPoint2D>,
 }
 
 impl GeoTree {
     pub fn new() -> Self {
         GeoTree {
             rtree: RTree::new(),
-            btree: HashSet::new(),
+            hash: HashSet::new(),
         }
     }
 
@@ -75,16 +76,16 @@ impl GeoTree {
         btree.extend(items.iter().map(|i| { i.to_owned() }));
         GeoTree {
             rtree: RTree::bulk_load(items),
-            btree,
+            hash: btree,
         }
     }
     pub fn insert(&mut self, p: GeoPoint2D) {
-        self.btree.insert(p.clone());
+        self.hash.insert(p.clone());
         self.rtree.insert(p);
     }
     pub fn delete(&mut self, tag: &str) -> bool {
         let point = GeoPoint2D::new(tag.to_owned());
-        let saved_point = match self.btree.get(&point) {
+        let saved_point = match self.hash.get(&point) {
             None => {
                 return  false
             }
@@ -101,12 +102,12 @@ impl GeoTree {
                 true
             }
         };
-        let l = self.btree.remove(&saved_point);
+        let l = self.hash.remove(&saved_point);
         return r && l;
     }
     pub fn get(&self, tag: &str) -> Option<&GeoPoint2D> {
         let point = GeoPoint2D::new(tag.to_owned());
-        self.btree.get(&point)
+        self.hash.get(&point)
     }
     pub fn locate_at_point(&self, point: &[f64; 2]) -> Option<&GeoPoint2D> {
         self.rtree.locate_at_point(&point)
@@ -115,14 +116,14 @@ impl GeoTree {
         other.rtree.iter().for_each(|point| {
             self.rtree.insert(point.clone())
         });
-        self.btree.extend(other.btree.iter().map(|v| v.clone()))
+        self.hash.extend(other.hash.iter().map(|v| v.clone()))
     }
 }
 
 impl GeoTree {
-    pub fn iter(self: &mut Self) -> impl Iterator<Item=&GeoPoint2D>
+    pub fn iter(self: &Self) -> impl Iterator<Item=&GeoPoint2D>
     {
-        self.btree.iter()
+        self.hash.iter()
     }
 }
 
@@ -206,8 +207,13 @@ impl RespResponse for Data {
                 let json_string = serde_json::to_string_pretty(d).unwrap_or("nil".to_string());
                 print_string(&json_string)
             }
-            Data::GeoTree(_) => {
-                print_err("ERR wrong data type")
+            Data::GeoTree(d) => {
+                let mut points_array: Vec<Vec<String>> = vec![];
+                d.iter().for_each(|t| {
+                    let point_array: Vec<String> = vec![t.x_cord().to_string(), t.y_cord().to_string()];
+                    points_array.push(point_array)
+                });
+                print_nested_arr(points_array)
             }
             Data::Null => {
                 print_str("nil")
@@ -445,11 +451,26 @@ pub fn exists(context: &Context, cmd: &ExistsCmd) -> String {
 }
 
 pub fn info(context: &Context, _cmd: &InfoCmd) -> String {
-    print_err("ERR")
+    let dbs = &DBS.read().unwrap();
+    let db = fetch_db(dbs, &context.db);
+    let key_count = db.len();
+    let size_on_disk = db.size_on_disk().unwrap_or(0);
+    let name = context.db.to_owned().unwrap_or(DEFAULT_DATABASE_NAME.to_owned());
+
+    let db_info_json = json!({
+        "name" : name,
+        "size_on_disk" : size_on_disk,
+        "keys": key_count
+    });
+    let db_info_string = serde_json::to_string(&db_info_json).unwrap();
+    print_string(&db_info_string)
 }
 
 pub fn db_size(context: &Context, _cmd: &DBSizeCmd) -> String {
-    print_err("ERR")
+    let dbs = &DBS.read().unwrap();
+    let db = fetch_db(dbs, &context.db);
+    let size_on_disk = db.size_on_disk().unwrap_or(0) as i64;
+    print_integer(&size_on_disk)
 }
 
 pub fn del(context: &Context, cmd: &DelCmd) -> String {
