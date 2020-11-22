@@ -33,8 +33,6 @@ pub fn compile(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
             compile_raw(buf)
         }
     };
-
-    Err(error::SyntaxError)
 }
 
 pub fn compile_raw(cmd: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> {
@@ -176,6 +174,7 @@ make_command!(DelCmd{arg_key : String} -> db::del);
 make_command!(PersistCmd{arg_key : String} -> db::persist);
 make_command!(TTLCmd{arg_key : String} -> db::ttl);
 make_command!(ExpireCmd{arg_key: String, arg_value : i64} -> db::expire);
+make_command!(IncrByCmd{arg_key: String, arg_value : i64} -> db::incr_by);
 make_command!(ExpireAtCmd{arg_key: String, arg_value : i64} -> db::expire_at);
 make_command!(KeysCmd{pattern : String} -> db::keys);
 make_command!(ExistsCmd{keys : Vec<String>} -> db::exists);

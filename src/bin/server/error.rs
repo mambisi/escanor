@@ -11,6 +11,9 @@ pub struct InternalError;
 pub struct InvalidCommand;
 
 #[derive(Debug)]
+pub struct ParseDataError;
+
+#[derive(Debug)]
 pub struct CustomMessageError{
     pub detail : String
 }
@@ -20,6 +23,20 @@ pub struct DatabaseError{
     pub detail : String
 }
 
+impl fmt::Display for ParseDataError {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", "error parsing string to data")
+    }
+}
+
+// This is important for other errors to wrap this one.
+impl error::Error for ParseDataError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        // Generic error, underlying cause isn't tracked.
+        None
+    }
+}
 
 impl fmt::Display for SyntaxError {
 

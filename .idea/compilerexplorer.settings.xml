@@ -2,5 +2,6 @@
 <project version="4">
   <component name="CompilerExplorerSettingsProvider">
     <option name="enabled" value="false" />
+    <option name="initialNoticeShown" value="true" />
   </component>
 </project>

@@ -3,6 +3,8 @@ use crate::{error, util, unit_conv};
 use serde_json::{Value};
 
 use crate::db::Data;
+use crate::error::ParseDataError;
+use std::str::FromStr;
 
 
 pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, error::SyntaxError> {
@@ -52,11 +54,14 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         let arg_value = itr.next().unwrap_or(&empty_string);
         if arg_value.is_empty() { return Err(error::SyntaxError); }
 
-        let es_val = if util::is_integer(arg_value){
-            let i = arg_value.parse::<i64>().unwrap();
-            Data::Int(i)
-        }else {
-            Data::String(arg_value.to_owned())
+
+        let es_val = match Data::from_str(arg_value) {
+            Ok(s) => {
+                s
+            }
+            Err(_) => {
+                return Err(error::SyntaxError)
+            }
         };
 
         let arg_ex_cmd = &itr.next().unwrap_or(&empty_string).to_lowercase();
@@ -125,6 +130,27 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
                     return Err(error::SyntaxError);
                 }
                 Ok(Box::new(ExpireCmd {
+                    arg_key: arg_key.to_owned(),
+                    arg_value : t
+                }))
+            },
+            Err(_) => {
+                Err(error::SyntaxError)
+            },
+        }
+    }else if cmd == "incrby" {
+        let arg_key = itr.next().unwrap_or(&empty_string);
+        if arg_key.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_value = itr.next().unwrap_or(&empty_string);
+        if arg_value.is_empty() { return Err(error::SyntaxError); }
+
+        return match arg_value.parse::<i64>() {
+            Ok(t) => {
+                if t < 0 {
+                    return Err(error::SyntaxError);
+                }
+                Ok(Box::new(IncrByCmd {
                     arg_key: arg_key.to_owned(),
                     arg_value : t
                 }))

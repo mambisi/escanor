@@ -5,7 +5,7 @@ SET user.3 regina
 
 SET admin.0 francis
 SET admin.1 kwaku
-
+GEOADD astores -1.596427 5.506981 kumasi-store1 -1.588801 5.482034 kumasi-store2
 GEOADD stores -1.596427 5.506981 kumasi-store1 -1.588801 5.482034 kumasi-store2
 GEOADD stores -1.372422 5.194894 tema
 GEOADD stores -3.416478 22.213339 mali

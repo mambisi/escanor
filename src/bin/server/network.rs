@@ -35,7 +35,6 @@ pub struct Context{
 use std::net::{SocketAddr,Shutdown};
 use futures::io::Error;
 use serde_yaml::Value;
-use crate::config::ServerConf;
 use crate::config;
 
 fn process_socket(socket: TcpStream){
