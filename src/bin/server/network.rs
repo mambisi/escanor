@@ -68,7 +68,7 @@ impl RaftNetwork<ClientRequest> for Network {
     async fn append_entries(&self, target: u64, rpc: AppendEntriesRequest<ClientRequest>) -> Result<AppendEntriesResponse> {
         let node_id = storage::get_node_addrs(target)?;
         let mut client = RpcServiceClient::connect(node_id).await?;
-        let entries = bincode::serialize(&rpc.entries)?;
+        let entries = serde_json::to_vec(&rpc.entries).unwrap_or_default();
         let req = AppendEntriesReq {
             term: rpc.term,
             leader_id: rpc.leader_id,
@@ -194,7 +194,7 @@ fn process_socket(socket: TcpStream) {
                             lines.send(f).await;
                         }
                         Err(e) => {
-                            debug!("Write Error: {:?}", e);
+                            info!("Write Error: {:?}", e);
                             lines.send(Frame::Error("SERVER ERROR".to_owned())).await;
                         }
                     };

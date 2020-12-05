@@ -90,6 +90,7 @@ pub fn add_cluster(_: Arc<std::sync::RwLock<Context>>, cmd: &AddClusterCmd) -> S
     let mut buff = [0; 16];
     BigEndian::write_u64(&mut buff, cmd.arg_node_id);
     nodes_tree.insert(buff, cmd.arg_addrs.as_bytes());
+    RAFT.change_membership(get_cluster_members());
     RAFT.add_non_voter(cmd.arg_node_id);
     print_ok()
 }
@@ -106,8 +107,6 @@ pub fn rem_cluster(_: Arc<std::sync::RwLock<Context>>, cmd: &RemClusterCmd) -> S
     let mut buff = [0; 16];
     BigEndian::write_u64(&mut buff, cmd.arg_node_id);
     nodes_tree.remove(&buff);
-    RAFT.add_non_voter(cmd.arg_node_id);
-
     let members: HashSet<NodeId> = nodes_tree.iter().map(|r| {
         let (k, _) = r.unwrap();
         let node_id: NodeId = BigEndian::read_u64(&k);
@@ -316,10 +315,16 @@ impl RaftStorage<ClientRequest, ServerResponse> for Storage {
         }
         let b = start.to_be_bytes();
         let t = stop.to_be_bytes();
-        Ok(self.log.range(b..t).map(|res| {
+        Ok(self.log.range(b..t).filter_map(|res| {
             let (_, value) = res.unwrap();
-            let entry: Entry<ClientRequest> = bincode::deserialize(&value).unwrap();
-            entry
+             match serde_json::from_slice::<Entry<ClientRequest>>(&value) {
+                Ok(e) => {
+                    Some(e)
+                }
+                Err(_) => {
+                    None
+                }
+            }
         }).collect())
     }
 
@@ -361,7 +366,7 @@ impl RaftStorage<ClientRequest, ServerResponse> for Storage {
     async fn replicate_to_log(&self, entries: &[Entry<ClientRequest>]) -> Result<()> {
         let mut batch = sled::Batch::default();
         for entry in entries {
-            let entry_bytes = bincode::serialize(entry).unwrap();
+            let entry_bytes = serde_json::to_vec(entry).unwrap_or_default();
             batch.insert(IVec::from(&entry.index.to_be_bytes()), IVec::from(entry_bytes));
         }
         self.log.apply_batch(batch);
@@ -443,7 +448,7 @@ impl RaftStorage<ClientRequest, ServerResponse> for Storage {
             // Go backwards through the log to find the most recent membership config <= the `through` index.
             membership_config = self.log.iter().rev().find_map(|entry| {
                 let (_, v) = entry.unwrap();
-                let entry: Entry<ClientRequest> = bincode::deserialize(&v).unwrap();
+                let entry: Entry<ClientRequest> = serde_json::from_slice(&v).unwrap();
                 match &entry.payload {
                     EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
                     _ => None,
@@ -458,7 +463,7 @@ impl RaftStorage<ClientRequest, ServerResponse> for Storage {
 
             term = self.log.get(last_applied_log.to_be_bytes()).map(|entry| {
                 let v = entry.unwrap();
-                let entry: Entry<ClientRequest> = bincode::deserialize(&v).unwrap();
+                let entry: Entry<ClientRequest> = serde_json::from_slice(&v).unwrap();
                 entry.term
             }).or_else(|_| Err(anyhow::anyhow!(ERR_INCONSISTENT_LOG)))?;
 
@@ -511,7 +516,7 @@ impl RaftStorage<ClientRequest, ServerResponse> for Storage {
         info!("{:#?}", snapshot);
         let membership_config = self.log.iter().rev().find_map(|entry| {
             let (_, v) = entry.unwrap();
-            let entry: Entry<ClientRequest> = bincode::deserialize(&v).unwrap();
+            let entry: Entry<ClientRequest> = serde_json::from_slice(&v).unwrap();
             match &entry.payload {
                 EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
                 _ => None,
@@ -536,7 +541,7 @@ impl RaftStorage<ClientRequest, ServerResponse> for Storage {
             }
         }
         let e: Entry<ClientRequest> = Entry::new_snapshot_pointer(index, term, id, membership_config);
-        let e_to_vec = bincode::serialize(&e)?;
+        let e_to_vec = serde_json::to_vec(&e)?;
         self.log.insert(IVec::from(&index.to_be_bytes()), e_to_vec);
         Ok(())
     }
@@ -546,7 +551,7 @@ impl RaftStorage<ClientRequest, ServerResponse> for Storage {
         match &*self.current_snapshot.read().await {
             None => Ok(None),
             Some(snapshot) => {
-                let reader = bincode::serialize(snapshot)?;
+                let reader = serde_json::to_vec(snapshot)?;
                 Ok(Some(CurrentSnapshotData {
                     index: snapshot.index,
                     term: snapshot.term,

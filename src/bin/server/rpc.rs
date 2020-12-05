@@ -20,8 +20,7 @@ impl RpcService for RPC {
     async fn append_entries(&self, request: Request<AppendEntriesReq>) -> Result<Response<AppendEntriesResp>, Status> {
         let r = request.get_ref();
 
-        let entries: Vec<Entry<ClientRequest>> = bincode::deserialize(&r.entries)
-            .or_else(|_| Err(Status::invalid_argument("Error parsing entries")))?;
+        let entries: Vec<Entry<ClientRequest>> = serde_json::from_slice(&r.entries).unwrap_or_default();
         let rpc = AppendEntriesRequest {
             term: r.term,
             leader_id: r.leader_id,
@@ -31,7 +30,10 @@ impl RpcService for RPC {
             leader_commit: r.leader_commit,
         };
         let resp = RAFT.append_entries(rpc).await.or_else(
-            |err|  Err(Status::invalid_argument("Raft Error"))
+            |err|  {
+                info!("Error: {}", err);
+                Err(Status::invalid_argument("Raft Error"))
+            }
         )?;
         let conflict_opt = match resp.conflict_opt {
             None => {
@@ -84,9 +86,13 @@ impl RpcService for RPC {
             last_log_term: r.last_log_term
         };
 
+        info!("Receiving Vote Request: {:#?}", rpc);
+
         let resp = RAFT.vote(rpc).await.or_else(
             |err|  Err(Status::invalid_argument("Raft Error"))
         )?;
+
+        info!("Sending Vote: {:#?}", resp);
 
         Ok(Response::new(VoteResp {
             term: resp.term,
@@ -99,10 +105,13 @@ impl RpcService for RPC {
 pub async fn start_rpc_server(addr: &str) -> Result<()> {
     let addr = addr.parse()?;
     let router = RPC;
+
+    info!("RPC server running at {}", addr);
     Server::builder()
         .add_service(RpcServiceServer::new(router))
         .serve(addr)
         .await?;
-    info!("RPC server running at {}", addr);
+
+
     Ok(())
 }

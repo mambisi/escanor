@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
             .short("r")
             .long("rpc")
             .help("sets the rpc port for the server")
-            .default_value("50051")
+            .default_value("5051")
             .takes_value(true))
         .arg(Arg::with_name("RESET")
             .long("reset")
@@ -118,12 +118,22 @@ async fn main() -> Result<()> {
     info!("Ready to accept connections");
     lazy_static::initialize(&RAFT);
     let mut members = storage::get_cluster_members();
-    RAFT.initialize(members).await?;
+    if members.len() >= 2 {
+        RAFT.initialize(members).await?;
+    }else {
+        info!("need more nodes to create raft cluster");
+        RAFT.initialize(HashSet::new()).await?
+    }
+
     info!("PID: {}", std::process::id());
     config::load_conf(true).await?;
     db::init().await;
-    network::start_up( addrs).await?;
-    rpc::start_rpc_server(&format!("[::1]:{}", rpc)).await?;
-    storage::monitor_metrics().await;
+    storage::monitor_metrics();
+    let rpc_addrs = format!("127.0.0.1:{}", rpc);
+    let n = network::start_up( addrs);
+    let r = rpc::start_rpc_server(&rpc_addrs);
+
+    tokio::join!(n,r);
+
     Ok(())
 }
