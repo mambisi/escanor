@@ -22,11 +22,15 @@ pub fn config_file_path() -> Option<PathBuf> {
 }
 
 pub fn create_db_folder(name: &str) -> String {
-    let mut p = dirs::home_dir().unwrap();
-    p.push(".escanor");
-    p.push(name);
-    let db_path = p.to_str().unwrap();
-    db_path.to_owned()
+    if cfg!(debug_assertions) {
+        let mut p = dirs::home_dir().unwrap();
+        p.push(".escanor");
+        p.push(name);
+        let db_path = p.to_str().unwrap();
+        db_path.to_owned()
+    } else {
+        name.to_string()
+    }
 }
 
 pub fn dbs_path() -> Option<PathBuf> {

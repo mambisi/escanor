@@ -1,4 +1,4 @@
-use async_raft::{RaftStorage, NodeId, RaftMetrics};
+use async_raft::{RaftStorage, NodeId, RaftMetrics, AppData};
 use crate::codec::{ClientRequest, ServerResponse};
 use async_raft::raft::{Entry, MembershipConfig, EntryPayload};
 use async_raft::storage::{HardState, InitialState, CurrentSnapshotData};
@@ -37,6 +37,7 @@ use tokio::runtime::Runtime;
 const NODE_TREE_KEY: &str = "cluster_nodes";
 const CLUSTER_NODE_ID_KEY: &str = "cluster_node_id";
 const CLUSTER_METRICS_KEY: &str = "cluster_metrics";
+
 use crate::RAFT;
 use nom::lib::std::string::FromUtf8Error;
 
@@ -53,13 +54,12 @@ pub fn init() {
 }
 
 pub async fn monitor_metrics() {
-
     tokio::task::spawn(async {
         let state = SYS_STATE.clone();
         loop {
             match RAFT.metrics().recv().await {
                 Some(metrics) => {
-                    match  serde_json::to_string(&metrics) {
+                    match serde_json::to_string(&metrics) {
                         Ok(json) => {
                             state.insert(CLUSTER_METRICS_KEY, IVec::from(json.as_bytes()));
                         }
@@ -141,7 +141,7 @@ pub fn cluster_metrics(_: Arc<std::sync::RwLock<Context>>, cmd: &ClusterMetrics)
         Ok(r) => {
             match r {
                 None => {
-                    return print_str("nil")
+                    return print_str("nil");
                 }
                 Some(v) => {
                     String::from_utf8(v.to_vec()).unwrap_or("nil".to_owned())
@@ -149,7 +149,7 @@ pub fn cluster_metrics(_: Arc<std::sync::RwLock<Context>>, cmd: &ClusterMetrics)
             }
         }
         Err(_) => {
-            return print_str("nil")
+            return print_str("nil");
         }
     };
     print_str(&json)
@@ -163,7 +163,7 @@ pub fn cluster_set_node_id(_: Arc<std::sync::RwLock<Context>>, cmd: &ClusterSetN
 }
 
 pub fn get_node_id() -> NodeId {
-    match SYS_STATE.get(&CLUSTER_NODE_ID_KEY){
+    match SYS_STATE.get(&CLUSTER_NODE_ID_KEY) {
         Ok(r) => {
             match r {
                 None => {
@@ -181,11 +181,11 @@ pub fn get_node_id() -> NodeId {
     }
 }
 
-pub fn get_node_addrs( id : NodeId) -> anyhow::Result<String> {
+pub fn get_node_addrs(id: NodeId) -> anyhow::Result<String> {
     let nodes_tree = SYS_STATE.open_tree(NODE_TREE_KEY)?;
     let mut buff = [0; 16];
     BigEndian::write_u64(&mut buff, id);
-    let addrs_ivec =  nodes_tree.get(&buff)?.unwrap_or_default();
+    let addrs_ivec = nodes_tree.get(&buff)?.unwrap_or_default();
     let addrs = String::from_utf8(addrs_ivec.to_vec())?;
     Ok(addrs)
 }
@@ -232,7 +232,6 @@ pub struct StorageSnapshot {
 
 impl Storage {
     pub fn new(id: NodeId) -> Self {
-
         let log = sled::open(create_db_folder("log")).expect("failed to initialize storage");
         let sys = get_sys_state();
         sys.insert(LAST_APPLIED_LOG_KEY, "0");
@@ -255,11 +254,15 @@ impl RaftStorage<ClientRequest, ServerResponse> for Storage {
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
         let cfg_opt = self.log.iter().rev().find_map(|entry| {
             let (_, v) = entry.unwrap();
-            let entry: Entry<ClientRequest> = bincode::deserialize(&v).unwrap();
-            match &entry.payload {
-                EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
-                EntryPayload::SnapshotPointer(snap) => Some(snap.membership.clone()),
-                _ => None,
+            match bincode::deserialize::<Entry<ClientRequest>>(&v) {
+                Ok(entry) => {
+                    match &entry.payload {
+                        EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
+                        EntryPayload::SnapshotPointer(snap) => Some(snap.membership.clone()),
+                        _ => None,
+                    }
+                }
+                Err(e) => { None }
             }
         });
 
