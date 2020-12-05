@@ -3,3 +3,4 @@
 /logs
 /keys
 /redis-protocol/target/
+/proto/target/

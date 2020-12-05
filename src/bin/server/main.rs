@@ -25,6 +25,7 @@ mod codec;
 mod json;
 mod storage;
 mod persistence;
+mod rpc;
 
 use clap::{App, Arg};
 
@@ -54,6 +55,18 @@ const APP_INFO: AppInfo = AppInfo { name: "escanor", author: "ByteQuery" };
 
 
 pub type EscanorRaft = Raft<ClientRequest, ServerResponse, Network, Storage>;
+
+lazy_static!(
+    pub static ref RAFT : Arc<EscanorRaft> = {
+        storage::init();
+        let node_id : NodeId = storage::get_node_id();
+        let config = Arc::new(async_raft::Config::build("cls".to_owned()).validate().unwrap());
+        let network = Arc::new(Network::new());
+        let storage = Arc::new(Storage::new(node_id));
+        let raft = Arc::new(EscanorRaft::new(node_id, config, network, storage));
+        return raft
+    };
+);
 
 
 #[tokio::main]
@@ -96,18 +109,13 @@ async fn main() -> Result<()> {
 
     let addrs = &format!("{}:{}", host, port);
     info!("Ready to accept connections");
-
-    let node_id : NodeId = 89;
-    let config = Arc::new(async_raft::Config::build("cls".to_owned()).validate().unwrap());
-    let network = Arc::new(Network::new());
-    let storage = Arc::new(Storage::new(node_id));
-    let raft = Arc::new(EscanorRaft::new(node_id, config, network, storage));
-    let mut members = HashSet::new();
-    members.insert(node_id);
-    raft.initialize(members).await?;
+    lazy_static::initialize(&RAFT);
+    let mut members = storage::get_cluster_members();
+    RAFT.initialize(members).await?;
     info!("PID: {}", std::process::id());
     config::load_conf(true).await?;
     db::init().await;
-    network::start_up(raft, addrs).await?;
+    network::start_up( addrs).await?;
+    storage::monitor_metrics().await;
     Ok(())
 }

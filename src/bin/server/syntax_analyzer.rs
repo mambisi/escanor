@@ -597,6 +597,57 @@ pub fn analyse_token_stream(tokens: Vec<String>) -> Result<Box<dyn Command>, err
         }));
     }
 
+    //cluster
+    else if cmd == "clusteradd" {
+
+        let arg_addrs = itr.next().unwrap_or(&empty_string);
+        if arg_addrs.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_node_id = itr.next().unwrap_or(&empty_string);
+        if arg_node_id.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_node_id = arg_node_id.parse::<u64>().unwrap_or(0);
+        if arg_node_id == 0 {
+            return Err(error::SyntaxError);
+        }
+
+        return Ok(Box::new(AddClusterCmd {
+            arg_node_id,
+            arg_addrs : arg_addrs.to_owned()
+        }));
+    }
+    else if cmd == "clusterrem" {
+
+        let arg_node_id = itr.next().unwrap_or(&empty_string);
+        if arg_node_id.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_node_id = arg_node_id.parse::<u64>().unwrap_or(0);
+        if arg_node_id == 0 {
+            return Err(error::SyntaxError);
+        }
+
+        return Ok(Box::new(RemClusterCmd {
+            arg_node_id
+        }));
+    }
+    else if cmd == "clustersetnodeid" {
+
+        let arg_node_id = itr.next().unwrap_or(&empty_string);
+        if arg_node_id.is_empty() { return Err(error::SyntaxError); }
+
+        let arg_node_id = arg_node_id.parse::<u64>().unwrap_or(0);
+        if arg_node_id == 0 {
+            return Err(error::SyntaxError);
+        }
+
+        return Ok(Box::new(ClusterSetNodeId {
+            arg_node_id
+        }));
+    }
+    else if cmd == "cluster" {
+        return Ok(Box::new(ClusterCmd));
+    }
+
     Err(error::SyntaxError)
 }
 

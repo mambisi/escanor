@@ -7,11 +7,16 @@
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/redis-protocol/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/schema/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/proto/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/dbs" />
+      <excludeFolder url="file://$MODULE_DIR$/proto/target" />
       <excludeFolder url="file://$MODULE_DIR$/redis-protocol/target" />
+      <excludeFolder url="file://$MODULE_DIR$/schema/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" name="Bundled Protobuf Distribution" level="application" />
   </component>
 </module>

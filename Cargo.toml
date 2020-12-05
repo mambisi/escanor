@@ -42,6 +42,7 @@ serde = { version = "1.0", features = ["rc","derive"] }
 serde_json = "1.0"
 rstar = { version = "0.8.2", features = ["serde"]}
 redis-protocol = { path="./redis-protocol" }
+proto = { path="./proto" }
 geohash = "0.9.0"
 linefeed = "0.6"
 glob = "0.2.11"
@@ -77,6 +78,8 @@ tracing-subscriber = "0.2"
 tracing-futures = { version = "0.2.3", default-features = false }
 jsonrpc-derive = "15.1.0"
 jsonrpc-core = "15.1.0"
+tonic = "0.3"
+prost = "0.6"
 
 [dev-dependencies]
 env_logger = "0.7.1"

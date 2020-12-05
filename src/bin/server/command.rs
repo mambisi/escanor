@@ -9,6 +9,7 @@ use crate::syntax_analyzer;
 
 
 use crate::unit_conv::Units;
+use crate::storage;
 
 use redis_protocol::types::Frame;
 use serde_json::Value;
@@ -169,6 +170,12 @@ impl Command for AuthCmd {
         db::auth(context, self)
     }
 }
+//cluster
+make_command!(AddClusterCmd{arg_addrs : String, arg_node_id: u64} -> storage::add_cluster);
+make_command!(RemClusterCmd{arg_node_id: u64} -> storage::rem_cluster);
+make_command!(ClusterCmd; -> storage::cluster);
+make_command!(ClusterMetrics; -> storage::cluster_metrics);
+make_command!(ClusterSetNodeId{arg_node_id: u64} -> storage::cluster_set_node_id);
 
 //Key Value Commands
 make_command!(SetCmd{arg_key : String,arg_value : Data, arg_exp : u32} -> db::set);

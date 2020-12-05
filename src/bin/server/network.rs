@@ -37,7 +37,8 @@ use serde::{Serialize,Deserialize};
 use crate::command::Command;
 use tracing::{debug, error, info, span, warn, Level};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+
+#[derive(Clone,Debug,Serialize, Deserialize)]
 pub struct Context {
     pub client_addr: String,
     pub auth_is_required: bool,
@@ -47,6 +48,7 @@ pub struct Context {
 }
 
 
+#[derive(Clone, Debug)]
 pub struct Network;
 
 impl Network {
@@ -54,6 +56,8 @@ impl Network {
         return Network {};
     }
 }
+use crate::RAFT;
+
 
 
 #[async_trait]
@@ -73,7 +77,7 @@ impl RaftNetwork<ClientRequest> for Network {
 
 
 
-fn process_socket(raft: Arc<EscanorRaft>, socket: TcpStream) {
+fn process_socket(socket: TcpStream) {
     // do work with socket here
     tokio::spawn(async move {
         let addrs: SocketAddr = socket.peer_addr().unwrap();
@@ -110,7 +114,7 @@ fn process_socket(raft: Arc<EscanorRaft>, socket: TcpStream) {
         while let Some(message) = lines.next().await {
             match message {
                 Ok(frame) => {
-                    let r = raft.client_write(ClientWriteRequest::new(ClientRequest {
+                    let r = RAFT.client_write(ClientWriteRequest::new(ClientRequest {
                         context : context.clone(),
                         frame
                     })).await;
@@ -131,7 +135,7 @@ fn process_socket(raft: Arc<EscanorRaft>, socket: TcpStream) {
                     };
                 }
                 Err(err) => {
-                    debug!("Disconnected Context: {:?}", context);
+                    debug!("Disconnected Context");
                     println!("Socket closed with error: {:?}", err);
                 }
             };
@@ -140,7 +144,7 @@ fn process_socket(raft: Arc<EscanorRaft>, socket: TcpStream) {
 }
 
 
-pub async fn start_up(raft: Arc<EscanorRaft>, addr: &str) -> Result<()> {
+pub async fn start_up(addr: &str) -> Result<()> {
 
 
     let mut listener = TcpListener::bind(addr).await?;
@@ -151,7 +155,7 @@ pub async fn start_up(raft: Arc<EscanorRaft>, addr: &str) -> Result<()> {
     loop {
         match listener.accept().await {
             Ok((socket, _addr)) => {
-                process_socket(raft.clone(), socket);
+                process_socket(socket);
             }
             Err(e) => error!("couldn't get client: {:?}", e),
         };

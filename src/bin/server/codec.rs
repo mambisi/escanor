@@ -13,6 +13,7 @@ pub struct RespCodec;
 
 #[derive( Debug, Clone,Serialize, Deserialize)]
 pub struct ClientRequest {
+    #[serde(skip_serializing)]
     pub context : Arc<RwLock<Context>>,
     pub frame : Frame
 }
