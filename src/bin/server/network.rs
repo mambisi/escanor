@@ -17,7 +17,7 @@ use crate::codec::{RespCodec, ClientRequest, ServerResponse};
 use std::net::{SocketAddr, Shutdown};
 use serde_yaml::Value;
 use crate::config;
-use async_raft::raft::{VoteRequest, InstallSnapshotRequest, AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotResponse, VoteResponse, ClientWriteRequest, ClientWriteResponse};
+use async_raft::raft::{VoteRequest, InstallSnapshotRequest, AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotResponse, VoteResponse, ClientWriteRequest, ClientWriteResponse, ConflictOpt};
 
 use bytes::{BytesMut};
 use nom::AsBytes;
@@ -32,13 +32,13 @@ use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 use crate::storage::Storage;
 
-use serde::{Serialize,Deserialize};
+use serde::{Serialize, Deserialize};
 
 use crate::command::Command;
 use tracing::{debug, error, info, span, warn, Level};
 
 
-#[derive(Clone,Debug,Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Context {
     pub client_addr: String,
     pub auth_is_required: bool,
@@ -56,25 +56,90 @@ impl Network {
         return Network {};
     }
 }
+
 use crate::RAFT;
 
-
+use crate::storage;
+use proto::rpc_service_client::RpcServiceClient;
+use proto::{AppendEntriesReq, InstallSnapshotReq, VoteReq};
 
 #[async_trait]
 impl RaftNetwork<ClientRequest> for Network {
     async fn append_entries(&self, target: u64, rpc: AppendEntriesRequest<ClientRequest>) -> Result<AppendEntriesResponse> {
-        unimplemented!()
+        let node_id = storage::get_node_addrs(target)?;
+        let mut client = RpcServiceClient::connect(node_id).await?;
+        let entries = bincode::serialize(&rpc.entries)?;
+        let req = AppendEntriesReq {
+            term: rpc.term,
+            leader_id: rpc.leader_id,
+            prev_log_index: rpc.prev_log_index,
+            prev_log_term: rpc.prev_log_term,
+            entries,
+            leader_commit: rpc.leader_commit,
+        };
+        let resp = client.append_entries(req).await?;
+
+        let r = resp.get_ref();
+        let conflict_opt = match &r.conflict_opt {
+            None => {
+                None
+            }
+            Some(co) => {
+                Some(ConflictOpt {
+                    term: co.term,
+                    index: co.index,
+                })
+            }
+        };
+        Ok(AppendEntriesResponse {
+            term: r.term,
+            success: r.success,
+            conflict_opt,
+        })
     }
 
     async fn install_snapshot(&self, target: u64, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse> {
-        unimplemented!()
+        let node_id = storage::get_node_addrs(target)?;
+        let mut client = RpcServiceClient::connect(node_id).await?;
+
+        let req = InstallSnapshotReq {
+            term: rpc.term,
+            leader_id: rpc.leader_id,
+            last_included_index: rpc.last_included_index,
+            last_included_term: rpc.last_included_term,
+            offset: rpc.offset,
+            data: rpc.data,
+            done: rpc.done,
+        };
+
+        let resp = client.install_snapshot(req).await?;
+        let r = resp.get_ref();
+
+        Ok(InstallSnapshotResponse {
+            term: r.term
+        })
     }
 
     async fn vote(&self, target: u64, rpc: VoteRequest) -> Result<VoteResponse> {
-        unimplemented!()
+        let node_id = storage::get_node_addrs(target)?;
+        let mut client = RpcServiceClient::connect(node_id).await?;
+
+        let req = VoteReq {
+            term: rpc.term,
+            candidate_id: rpc.candidate_id,
+            last_log_index: rpc.last_log_index,
+            last_log_term: rpc.last_log_term,
+        };
+
+        let resp = client.vote(req).await?;
+        let r = resp.get_ref();
+
+        Ok(VoteResponse {
+            term: r.term,
+            vote_granted: r.vote_granted,
+        })
     }
 }
-
 
 
 fn process_socket(socket: TcpStream) {
@@ -115,8 +180,8 @@ fn process_socket(socket: TcpStream) {
             match message {
                 Ok(frame) => {
                     let r = RAFT.client_write(ClientWriteRequest::new(ClientRequest {
-                        context : context.clone(),
-                        frame
+                        context: context.clone(),
+                        frame,
                     })).await;
 
                     match r {
@@ -145,8 +210,6 @@ fn process_socket(socket: TcpStream) {
 
 
 pub async fn start_up(addr: &str) -> Result<()> {
-
-
     let mut listener = TcpListener::bind(addr).await?;
     printer::print_app_info();
 

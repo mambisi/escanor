@@ -8,25 +8,18 @@ use tonic::transport::Server;
 use async_raft::raft::{AppendEntriesRequest, InstallSnapshotRequest, VoteRequest};
 use async_raft::raft::Entry;
 use crate::codec::ClientRequest;
+use crate::RAFT;
 
-pub struct RPC {
-    raft: Arc<EscanorRaft>
-}
 
-impl RPC {
-    pub fn new(raft: Arc<EscanorRaft>) -> Self {
-        RPC {
-            raft
-        }
-    }
-}
+pub struct RPC;
+
 
 #[tonic::async_trait]
 impl RpcService for RPC {
     async fn append_entries(&self, request: Request<AppendEntriesReq>) -> Result<Response<AppendEntriesResp>, Status> {
         let r = request.get_ref();
 
-        let entries: Vec<Entry<ClientRequest>> = serde_json::from_slice(&r.entries)
+        let entries: Vec<Entry<ClientRequest>> = bincode::deserialize(&r.entries)
             .or_else(|_| Err(Status::invalid_argument("Error parsing entries")))?;
         let rpc = AppendEntriesRequest {
             term: r.term,
@@ -36,7 +29,7 @@ impl RpcService for RPC {
             entries,
             leader_commit: r.leader_commit,
         };
-        let resp = self.raft.append_entries(rpc).await.or_else(
+        let resp = RAFT.append_entries(rpc).await.or_else(
             |err|  Err(Status::invalid_argument("Raft Error"))
         )?;
         let conflict_opt = match resp.conflict_opt {
@@ -73,7 +66,7 @@ impl RpcService for RPC {
             done: r.done,
         };
 
-        let resp = self.raft.install_snapshot(rpc).await.or_else(
+        let resp = RAFT.install_snapshot(rpc).await.or_else(
             |err|  Err(Status::invalid_argument("Raft Error"))
         )?;
         Ok(Response::new(InstallSnapshotResp {
@@ -90,7 +83,7 @@ impl RpcService for RPC {
             last_log_term: r.last_log_term
         };
 
-        let resp = self.raft.vote(rpc).await.or_else(
+        let resp = RAFT.vote(rpc).await.or_else(
             |err|  Err(Status::invalid_argument("Raft Error"))
         )?;
 
@@ -102,9 +95,9 @@ impl RpcService for RPC {
 }
 
 
-pub async fn start_rpc_server(addr: &str, raft: Arc<EscanorRaft>) -> Result<()> {
+pub async fn start_rpc_server(addr: &str) -> Result<()> {
     let addr = addr.parse()?;
-    let router = RPC::new(raft);
+    let router = RPC;
     Server::builder()
         .add_service(RpcServiceServer::new(router))
         .serve(addr)

@@ -38,6 +38,7 @@ const NODE_TREE_KEY: &str = "cluster_nodes";
 const CLUSTER_NODE_ID_KEY: &str = "cluster_node_id";
 const CLUSTER_METRICS_KEY: &str = "cluster_metrics";
 use crate::RAFT;
+use nom::lib::std::string::FromUtf8Error;
 
 lazy_static!(
   static ref SYS_STATE : Arc<Db> = {
@@ -157,12 +158,12 @@ pub fn cluster_metrics(_: Arc<std::sync::RwLock<Context>>, cmd: &ClusterMetrics)
 pub fn cluster_set_node_id(_: Arc<std::sync::RwLock<Context>>, cmd: &ClusterSetNodeId) -> String {
     let mut buff = [0; 16];
     BigEndian::write_u64(&mut buff, cmd.arg_node_id);
-    SYS_STATE.insert(&NODE_TREE_KEY, &buff);
+    SYS_STATE.insert(&CLUSTER_NODE_ID_KEY, &buff);
     print_ok()
 }
 
 pub fn get_node_id() -> NodeId {
-    match SYS_STATE.get(&NODE_TREE_KEY){
+    match SYS_STATE.get(&CLUSTER_NODE_ID_KEY){
         Ok(r) => {
             match r {
                 None => {
@@ -178,6 +179,15 @@ pub fn get_node_id() -> NodeId {
             2002
         }
     }
+}
+
+pub fn get_node_addrs( id : NodeId) -> anyhow::Result<String> {
+    let nodes_tree = SYS_STATE.open_tree(NODE_TREE_KEY)?;
+    let mut buff = [0; 16];
+    BigEndian::write_u64(&mut buff, id);
+    let addrs_ivec =  nodes_tree.get(&buff)?.unwrap_or_default();
+    let addrs = String::from_utf8(addrs_ivec.to_vec())?;
+    Ok(addrs)
 }
 
 pub fn get_cluster_members() -> HashSet<NodeId> {
