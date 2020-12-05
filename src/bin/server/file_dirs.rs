@@ -1,4 +1,4 @@
-use std::path::{PathBuf};
+use std::path::{PathBuf, Path};
 use app_dirs2::*;
 use crate::APP_INFO;
 
@@ -21,6 +21,14 @@ pub fn config_file_path() -> Option<PathBuf> {
     Some(p)
 }
 
+pub fn create_db_folder(name: &str) -> String {
+    let mut p = dirs::home_dir().unwrap();
+    p.push(".escanor");
+    p.push(name);
+    let db_path = p.to_str().unwrap();
+    db_path.to_owned()
+}
+
 pub fn dbs_path() -> Option<PathBuf> {
     if cfg!(target_os = "linux") {
         let mut directory = PathBuf::from("/usr/lib/escanor");
@@ -30,7 +38,7 @@ pub fn dbs_path() -> Option<PathBuf> {
         return Some(directory);
     }
 
-    let p = match app_dir(AppDataType::SharedData, &APP_INFO, "") {
+    let p = match app_dir(AppDataType::UserCache, &APP_INFO, "") {
         Err(e) => { return None; }
         Ok(p) => { p }
     };

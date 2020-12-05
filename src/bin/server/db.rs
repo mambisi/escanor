@@ -4,6 +4,7 @@ use std::collections::HashMap;
 extern crate regex;
 
 use sled;
+use sled::Db;
 use crate::error::DatabaseError;
 use crate::{config, unit_conv};
 use crate::network::Context;
@@ -34,16 +35,20 @@ use cookie_factory::lib::std::fmt::Formatter;
 
 extern crate jsonpath_lib as jsonpath;
 extern crate json_dotpath;
-use json_dotpath::DotPaths;
 
-// Special Keys
-const DATABASE_PATH_PREFIX: &str = "dbs/";
-const DEFAULT_DATABASE_PATH: &str = "dbs/db0";
-const DEFAULT_QUEUE_LOG_PATH: &str = "logs/queue";
-const DEFAULT_DATABASE_NAME: &str = "db0";
+use json_dotpath::DotPaths;
+use crate::config::Conf;
+use tracing::{debug, error, info, span, warn, Level};
+
+use anyhow::Result;
+use crate::file_dirs::create_db_folder;
 
 lazy_static! {
-    static ref DBS : Arc<RwLock<HashMap<String,sled::Db>>> = Arc::new(RwLock::new(HashMap::new()));
+    static ref DB : Arc<Db> = {
+        let config = sled::Config::new().mode(sled::Mode::HighThroughput).path(create_db_folder("database"));
+        let db = config.open().expect("failed to open database");
+        return Arc::new(db);
+    };
 }
 
 trait DataTransform {
@@ -61,6 +66,34 @@ trait RespResponse {
 pub struct GeoTree {
     rtree: RTree<GeoPoint2D>,
     hash: HashSet<GeoPoint2D>,
+}
+
+pub fn export_db() -> Result<Vec<u8>> {
+    let export= DB.export();
+    let mut items: Vec<(Vec<u8>, Vec<u8>, Vec<Vec<Vec<u8>>>)> = Vec::new();
+    for (k1, k2, v) in export {
+
+        let z : Vec<Vec<Vec<u8>>> = v.map(|k| {
+           k
+        }).collect();
+
+        items.push((k1,k2, z))
+    }
+    let data = bincode::serialize(&items)?;
+    Ok(data)
+}
+
+pub fn input(data : &[u8]) -> Result<()>{
+    let mut items: Vec<(Vec<u8>, Vec<u8>, Vec<Vec<Vec<u8>>>)> = bincode::deserialize(data)?;
+    let export = items.iter().map(|(k1,k2,v)|{
+        let m = v.iter().map(|v|{
+            v.clone()
+        });
+
+        (k1.clone(),k2.clone(),m)
+    }).collect();
+    DB.import(export);
+    Ok(())
 }
 
 impl GeoTree {
@@ -87,7 +120,7 @@ impl GeoTree {
         let point = GeoPoint2D::new(tag.to_owned());
         let saved_point = match self.hash.get(&point) {
             None => {
-                return  false
+                return false;
             }
             Some(s) => {
                 s.to_owned()
@@ -183,7 +216,7 @@ impl Data {
                 Ok(d)
             }
             Err(e) => {
-                debug!("Parse error: {}",e);
+                debug!("Parse error: {}", e);
                 Err(ParseDataError)
             }
         };
@@ -224,9 +257,7 @@ impl RespResponse for Data {
 
 
 pub async fn init() {
-    lazy_static::initialize(&DBS);
-    let default_db = sled::open(DEFAULT_DATABASE_PATH).expect("failed to open database");
-
+    lazy_static::initialize(&DB);
 
     fn data_merge(
         _key: &[u8],               // the key being merged
@@ -276,7 +307,7 @@ pub async fn init() {
             }
 
             (Data::Json(mut o), Data::Json(n)) => {
-                let mut a : Value = serde_json::from_slice(&o).unwrap();
+                let mut a: Value = serde_json::from_slice(&o).unwrap();
                 let b: Value = serde_json::from_slice(&n).unwrap_or(Value::Null);
                 util::merge(&mut a, &b);
                 Data::Json(serde_json::to_vec(&a).unwrap())
@@ -297,16 +328,12 @@ pub async fn init() {
         let v = bincode::serialize(&merge_result).unwrap();
         Some(v)
     }
-    default_db.set_merge_operator(data_merge);
-    let mut dbs_writer = DBS.write().unwrap();
-    dbs_writer.insert("db0".to_string(), default_db);
+    DB.set_merge_operator(data_merge);
 }
 
-fn fetch_data(db: &Option<String>, key: &str) -> Result<Data, String> {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, db);
+fn _get(key: &str) -> Result<Data, String> {
     let k = key.as_bytes();
-    return match db.get(k) {
+    return match DB.get(k) {
         Ok(r) => {
             match r {
                 None => {
@@ -330,20 +357,23 @@ fn fetch_data(db: &Option<String>, key: &str) -> Result<Data, String> {
     };
 }
 
-pub fn auth(context: &mut Context, cmd: &AuthCmd) -> String {
-    context.client_auth_key = Some(cmd.arg_password.to_owned());
-    if !context.auth_is_required {
+pub fn auth(context: Arc<RwLock<Context>>, cmd: &AuthCmd) -> String {
+
+    let mut w_context = context.write().unwrap();
+
+    w_context.client_auth_key = Some(cmd.arg_password.to_owned());
+    if !w_context.auth_is_required {
         return print_ok();
     }
 
-    let auth_key = match &context.auth_key {
+    let auth_key = match &w_context.auth_key {
         Some(k) => k.to_owned(),
         None => {
             return print_err("ERR internal error");
         }
     };
 
-    let client_auth_key = match &context.client_auth_key {
+    let client_auth_key = match &w_context.client_auth_key {
         Some(k) => k.to_owned(),
         None => {
             return print_err("ERR internal error");
@@ -351,11 +381,11 @@ pub fn auth(context: &mut Context, cmd: &AuthCmd) -> String {
     };
 
     if auth_key == client_auth_key {
-        context.client_authenticated = true
+        w_context.client_authenticated = true
     } else {
-        context.client_authenticated = false
+        w_context.client_authenticated = false
     }
-    return if context.client_authenticated {
+    return if w_context.client_authenticated {
         print_ok()
     } else {
         print_err("ERR auth failed")
@@ -364,33 +394,18 @@ pub fn auth(context: &mut Context, cmd: &AuthCmd) -> String {
 
 pub fn select() {}
 
-fn fetch_db<'a>(dbs: &'a RwLockReadGuard<HashMap<String, sled::Db>>, name: &'a Option<String>) -> &'a sled::Db {
-    match name {
-        None => {
-            dbs.get(DEFAULT_DATABASE_NAME).unwrap()
-        }
-        Some(s) => {
-            dbs.get(s).unwrap()
-        }
-    }
-}
-
-pub fn set(context: &Context, cmd: &SetCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn set(context: Arc<RwLock<Context>>, cmd: &SetCmd) -> String {
     let v = bincode::serialize(&cmd.arg_value).unwrap();
     let k = cmd.arg_key.as_bytes();
-    db.insert(k, v);
+    DB.insert(k, v);
     print_ok()
 }
 
-pub fn get_set(context: &Context, cmd: &GetSetCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn get_set(context: Arc<RwLock<Context>>, cmd: &GetSetCmd) -> String {
     let k = cmd.arg_key.as_bytes();
     let v = bincode::serialize(&cmd.arg_value).unwrap();
 
-    match db.insert(k, v) {
+    match DB.insert(k, v) {
         Ok(r) => {
             let old_raw_data = match r {
                 None => {
@@ -409,56 +424,39 @@ pub fn get_set(context: &Context, cmd: &GetSetCmd) -> String {
     }
 }
 
-pub fn random_key(context: &Context, cmd: &RandomKeyCmd) -> String {
+pub fn random_key(context: Arc<RwLock<Context>>, cmd: &RandomKeyCmd) -> String {
     let key = nanoid!(25, &util::ALPHA_NUMERIC);
     print_string(&key)
 }
 
-pub fn get(context: &Context, cmd: &GetCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
-    let k = cmd.arg_key.as_bytes();
-    return match db.get(k) {
-        Ok(r) => {
-            let raw_data = match r {
-                None => {
-                    return print_str("nil");
-                }
-                Some(r) => {
-                    r
-                }
-            };
-            let data: Data = bincode::deserialize(raw_data.to_vec().as_slice()).unwrap();
+pub fn get(context: Arc<RwLock<Context>>, cmd: &GetCmd) -> String {
+    return match _get(&cmd.arg_key){
+        Ok(data) => {
             data.to_resp()
         }
-        Err(_) => {
-            print_str("nil")
+        Err(error) => {
+            error
         }
     };
 }
 
-pub fn exists(context: &Context, cmd: &ExistsCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn exists(context: Arc<RwLock<Context>>, cmd: &ExistsCmd) -> String {
     let mut found_count: i64 = 0;
     for key in &cmd.keys {
         let k = key.as_bytes();
-        if db.contains_key(k).unwrap_or(false) {
+        if DB.contains_key(k).unwrap_or(false) {
             found_count += 1;
         }
     }
     print_integer(&found_count)
 }
 
-pub fn info(context: &Context, _cmd: &InfoCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
-    let key_count = db.len();
-    let size_on_disk = db.size_on_disk().unwrap_or(0);
-    let name = context.db.to_owned().unwrap_or(DEFAULT_DATABASE_NAME.to_owned());
+pub fn info(context: Arc<RwLock<Context>>, _cmd: &InfoCmd) -> String {
+
+    let key_count = DB.len();
+    let size_on_disk = DB.size_on_disk().unwrap_or(0);
 
     let db_info_json = json!({
-        "name" : name,
         "size_on_disk" : size_on_disk,
         "keys": key_count
     });
@@ -466,51 +464,43 @@ pub fn info(context: &Context, _cmd: &InfoCmd) -> String {
     print_string(&db_info_string)
 }
 
-pub fn db_size(context: &Context, _cmd: &DBSizeCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
-    let size_on_disk = db.size_on_disk().unwrap_or(0) as i64;
+pub fn db_size(context: Arc<RwLock<Context>>, _cmd: &DBSizeCmd) -> String {
+    let size_on_disk = DB.size_on_disk().unwrap_or(0) as i64;
     print_integer(&size_on_disk)
 }
 
-pub fn del(context: &Context, cmd: &DelCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn del(context: Arc<RwLock<Context>>, cmd: &DelCmd) -> String {
     let k = cmd.arg_key.as_bytes();
     let mut count: i64 = 0;
-
-    match db.remove(k) {
+    match DB.remove(k) {
         Ok(_) => {
             count += 1
         }
         Err(_) => {}
     }
-
     print_integer(&count)
 }
 
-pub fn persist(context: &Context, cmd: &PersistCmd) -> String {
+pub fn persist(context: Arc<RwLock<Context>>, cmd: &PersistCmd) -> String {
     print_err("ERR")
 }
 
-pub fn ttl(context: &Context, cmd: &TTLCmd) -> String {
+pub fn ttl(context: Arc<RwLock<Context>>, cmd: &TTLCmd) -> String {
     print_err("ERR")
 }
 
-pub fn expire(context: &Context, cmd: &ExpireCmd) -> String {
+pub fn expire(context: Arc<RwLock<Context>>, cmd: &ExpireCmd) -> String {
     print_err("ERR")
 }
 
-pub fn expire_at(context: &Context, cmd: &ExpireAtCmd) -> String {
+pub fn expire_at(context: Arc<RwLock<Context>>, cmd: &ExpireAtCmd) -> String {
     print_err("ERR")
 }
 
-pub fn incr_by(context: &Context, cmd: &IncrByCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn incr_by(context: Arc<RwLock<Context>>, cmd: &IncrByCmd) -> String {
     let k = cmd.arg_key.as_bytes();
     let increment = cmd.arg_value;
-    let updated_data = db.update_and_fetch(k, |old| -> Option<Vec<u8>> {
+    let updated_data = DB.update_and_fetch(k, |old| -> Option<Vec<u8>> {
         let data = match old {
             None => {
                 Data::Int(0)
@@ -571,7 +561,7 @@ pub fn incr_by(context: &Context, cmd: &IncrByCmd) -> String {
     print_err("ERR")
 }
 
-pub fn keys(context: &Context, cmd: &KeysCmd) -> String {
+pub fn keys(context: Arc<RwLock<Context>>, cmd: &KeysCmd) -> String {
     let mut prefix = String::new();
     for c in cmd.pattern.chars() {
         match c {
@@ -591,9 +581,8 @@ pub fn keys(context: &Context, cmd: &KeysCmd) -> String {
     };
 
     let mut keys: Vec<String> = vec![];
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
-    for r in db.scan_prefix(prefix) {
+
+    for r in DB.scan_prefix(prefix) {
         match r {
             Ok((k, v)) => {
                 let key = String::from_utf8(k.to_vec()).unwrap();
@@ -607,9 +596,7 @@ pub fn keys(context: &Context, cmd: &KeysCmd) -> String {
     print_arr(keys)
 }
 
-pub fn geo_add(context: &Context, cmd: &GeoAddCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn geo_add(context: Arc<RwLock<Context>>, cmd: &GeoAddCmd) -> String {
     let k = cmd.arg_key.as_bytes();
 
     //db.fetch_and_update()
@@ -627,12 +614,12 @@ pub fn geo_add(context: &Context, cmd: &GeoAddCmd) -> String {
     });
 
     let v = bincode::serialize(&Data::GeoTree(geo_tree)).unwrap();
-    db.merge(k, v);
+    DB.merge(k, v);
     print_integer(&items_count)
 }
 
-pub fn geo_hash(context: &Context, cmd: &GeoHashCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn geo_hash(context: Arc<RwLock<Context>>, cmd: &GeoHashCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -667,8 +654,8 @@ pub fn geo_hash(context: &Context, cmd: &GeoHashCmd) -> String {
     print_string_arr(geo_hashes)
 }
 
-pub fn geo_dist(context: &Context, cmd: &GeoDistCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn geo_dist(context: Arc<RwLock<Context>>, cmd: &GeoDistCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -710,8 +697,8 @@ pub fn geo_dist(context: &Context, cmd: &GeoDistCmd) -> String {
     print_string(&distance.to_string())
 }
 
-pub fn geo_radius(context: &Context, cmd: &GeoRadiusCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn geo_radius(context: Arc<RwLock<Context>>, cmd: &GeoRadiusCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -765,8 +752,8 @@ pub fn geo_radius(context: &Context, cmd: &GeoRadiusCmd) -> String {
     print_nested_arr(item_string_arr)
 }
 
-pub fn geo_radius_by_member(context: &Context, cmd: &GeoRadiusByMemberCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn geo_radius_by_member(context: Arc<RwLock<Context>>, cmd: &GeoRadiusByMemberCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -802,12 +789,12 @@ pub fn geo_radius_by_member(context: &Context, cmd: &GeoRadiusByMemberCmd) -> St
         arg_order: cmd.arg_order,
     };
 
-    geo_radius(&context, &cmd)
+    geo_radius(context.clone(), &cmd)
 }
 
 
-pub fn geo_pos(context: &Context, cmd: &GeoPosCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn geo_pos(context: Arc<RwLock<Context>>, cmd: &GeoPosCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -842,8 +829,8 @@ pub fn geo_pos(context: &Context, cmd: &GeoPosCmd) -> String {
     print_nested_arr(points_array)
 }
 
-pub fn geo_del(context: &Context, cmd: &GeoDelCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn geo_del(context: Arc<RwLock<Context>>, cmd: &GeoDelCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -854,13 +841,9 @@ pub fn geo_del(context: &Context, cmd: &GeoDelCmd) -> String {
 
     return match data {
         Data::GeoTree(t) => {
-            let dbs = &DBS.read().unwrap();
-            let db = fetch_db(dbs, &context.db);
             let k = cmd.arg_key.as_bytes();
-
             let mut rem_keys_count = 0;
-
-            match db.remove(k) {
+            match DB.remove(k) {
                 Ok(k) => {
                     rem_keys_count += 1;
                 }
@@ -875,12 +858,11 @@ pub fn geo_del(context: &Context, cmd: &GeoDelCmd) -> String {
     };
 }
 
-pub fn geo_remove(context: &Context, cmd: &GeoRemoveCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn geo_remove(context: Arc<RwLock<Context>>, cmd: &GeoRemoveCmd) -> String {
+
     let k = cmd.arg_key.as_bytes();
-    let mut rm_count : i64 = 0;
-    db.update_and_fetch(k, |old| -> Option<Vec<u8>> {
+    let mut rm_count: i64 = 0;
+    DB.update_and_fetch(k, |old| -> Option<Vec<u8>> {
         let data = match old {
             None => {
                 Data::Null
@@ -917,8 +899,8 @@ pub fn geo_remove(context: &Context, cmd: &GeoRemoveCmd) -> String {
     print_integer(&rm_count)
 }
 
-pub fn geo_json(context: &Context, cmd: &GeoJsonCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn geo_json(context: Arc<RwLock<Context>>, cmd: &GeoJsonCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -941,16 +923,14 @@ pub fn geo_json(context: &Context, cmd: &GeoJsonCmd) -> String {
             }
         }
         _ => {
-            return print_err("ERR Invalid key for data type")
+            return print_err("ERR Invalid key for data type");
         }
     }
     print_string(&build_geo_json(&geo_arr).to_string())
 }
 
 // JSET, JGET, JDEL, JPATH, JMERGE
-pub fn jset_raw(context: &Context, cmd: &JSetRawCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn jset_raw(context: Arc<RwLock<Context>>, cmd: &JSetRawCmd) -> String {
     let k = cmd.arg_key.as_bytes();
 
     let json_value: Value = match serde_json::from_str(&cmd.arg_value) {
@@ -962,15 +942,13 @@ pub fn jset_raw(context: &Context, cmd: &JSetRawCmd) -> String {
     let json_b = serde_json::to_vec(&json_value).unwrap();
 
     let v = bincode::serialize(&Data::Json(json_b)).unwrap();
-    db.insert(k,v);
+    DB.insert(k, v);
     print_ok()
 }
 
-pub fn jset(context: &Context, cmd: &JSetCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn jset(context: Arc<RwLock<Context>>, cmd: &JSetCmd) -> String {
     let k = cmd.arg_key.as_bytes();
-    db.fetch_and_update(k, |old| -> Option<Vec<u8>> {
+    DB.fetch_and_update(k, |old| -> Option<Vec<u8>> {
         let data = match old {
             None => {
                 let json_b = serde_json::to_vec(&Value::Null).unwrap();
@@ -990,9 +968,7 @@ pub fn jset(context: &Context, cmd: &JSetCmd) -> String {
 
         match data {
             Data::Json(mut json_b) => {
-
-
-                let mut json : Value = serde_json::from_slice(&json_b).unwrap_or(Value::Null);
+                let mut json: Value = serde_json::from_slice(&json_b).unwrap_or(Value::Null);
                 let mut ers: Vec<json_dotpath::Error> = vec![];
                 for (path, value) in &cmd.arg_set_items {
                     match json.dot_set(path, value.to_owned()) {
@@ -1016,21 +992,19 @@ pub fn jset(context: &Context, cmd: &JSetCmd) -> String {
     print_ok()
 }
 
-pub fn jmerge(context: &Context, cmd: &JMergeCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn jmerge(context: Arc<RwLock<Context>>, cmd: &JMergeCmd) -> String {
     let k = cmd.arg_key.as_bytes();
     let mut json: Value = match serde_json::from_str(&cmd.arg_value) {
         Ok(t) => t,
         Err(_) => { return print_err("ERR invalid json"); }
     };
     let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();
-    db.merge(k,v);
+    DB.merge(k, v);
     print_ok()
 }
 
-pub fn jget(context: &Context, cmd: &JGetCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn jget(context: Arc<RwLock<Context>>, cmd: &JGetCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -1040,11 +1014,11 @@ pub fn jget(context: &Context, cmd: &JGetCmd) -> String {
     };
     let value = match data {
         Data::Json(json) => {
-            let json : Value = serde_json::from_slice(&json).unwrap_or(Value::Null);
+            let json: Value = serde_json::from_slice(&json).unwrap_or(Value::Null);
             json
         }
         _ => {
-            return print_err("ERR Invalid key for data type")
+            return print_err("ERR Invalid key for data type");
         }
     };
 
@@ -1065,8 +1039,8 @@ pub fn jget(context: &Context, cmd: &JGetCmd) -> String {
     print_string(&value.to_string())
 }
 
-pub fn jpath(context: &Context, cmd: &JPathCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn jpath(context: Arc<RwLock<Context>>, cmd: &JPathCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -1076,11 +1050,11 @@ pub fn jpath(context: &Context, cmd: &JPathCmd) -> String {
     };
     let value = match data {
         Data::Json(b) => {
-            let json : Value = serde_json::from_slice(&b).unwrap_or(Value::Null);
+            let json: Value = serde_json::from_slice(&b).unwrap_or(Value::Null);
             json
         }
         _ => {
-            return print_err("ERR Invalid key for data type")
+            return print_err("ERR Invalid key for data type");
         }
     };
 
@@ -1100,8 +1074,8 @@ pub fn jpath(context: &Context, cmd: &JPathCmd) -> String {
     print_arr(j_strings)
 }
 
-pub fn jdel(context: &Context, cmd: &JDelCmd) -> String {
-    let data = match fetch_data(&context.db, &cmd.arg_key) {
+pub fn jdel(context: Arc<RwLock<Context>>, cmd: &JDelCmd) -> String {
+    let data = match _get(&cmd.arg_key) {
         Ok(d) => {
             d
         }
@@ -1112,13 +1086,12 @@ pub fn jdel(context: &Context, cmd: &JDelCmd) -> String {
 
     return match data {
         Data::Json(_) => {
-            let dbs = &DBS.read().unwrap();
-            let db = fetch_db(dbs, &context.db);
+
             let k = cmd.arg_key.as_bytes();
 
             let mut rem_keys_count = 0;
 
-            match db.remove(k) {
+            match DB.remove(k) {
                 Ok(k) => {
                     rem_keys_count += 1;
                 }
@@ -1133,12 +1106,10 @@ pub fn jdel(context: &Context, cmd: &JDelCmd) -> String {
     };
 }
 
-pub fn jrem(context: &Context, cmd: &JRemCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn jrem(context: Arc<RwLock<Context>>, cmd: &JRemCmd) -> String {
     let k = cmd.arg_key.as_bytes();
     let mut removal_count = 0;
-    db.fetch_and_update(k, |old| -> Option<Vec<u8>> {
+    DB.fetch_and_update(k, |old| -> Option<Vec<u8>> {
         let data = match old {
             None => {
                 let json_b = serde_json::to_vec(&Value::Null).unwrap();
@@ -1158,8 +1129,7 @@ pub fn jrem(context: &Context, cmd: &JRemCmd) -> String {
 
         match data {
             Data::Json(mut json_b) => {
-
-                let mut json : Value = serde_json::from_slice(&json_b).unwrap_or(Value::Null);
+                let mut json: Value = serde_json::from_slice(&json_b).unwrap_or(Value::Null);
                 &cmd.arg_paths.iter().for_each(|s| {
                     match json.dot_remove(s) {
                         Ok(_) => {
@@ -1180,12 +1150,10 @@ pub fn jrem(context: &Context, cmd: &JRemCmd) -> String {
 }
 
 
-pub fn jincr_by(context: &Context, cmd: &JIncrByCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn jincr_by(context: Arc<RwLock<Context>>, cmd: &JIncrByCmd) -> String {
     let k = cmd.arg_key.as_bytes();
     let mut _value: i64 = 0;
-    let data = db.fetch_and_update(k, |old| -> Option<Vec<u8>> {
+    DB.fetch_and_update(k, |old| -> Option<Vec<u8>> {
         let data = match old {
             None => {
                 let json_b = serde_json::to_vec(&Value::Null).unwrap();
@@ -1205,8 +1173,7 @@ pub fn jincr_by(context: &Context, cmd: &JIncrByCmd) -> String {
 
         match data {
             Data::Json(mut json_b) => {
-
-                let mut json : Value = serde_json::from_slice(&json_b).unwrap_or(Value::Null);
+                let mut json: Value = serde_json::from_slice(&json_b).unwrap_or(Value::Null);
                 let path_to_incr = json.dot_get(&cmd.arg_path).unwrap_or(Some(Value::Null)).unwrap_or(Value::Null);
 
                 if path_to_incr.is_null() {
@@ -1214,7 +1181,7 @@ pub fn jincr_by(context: &Context, cmd: &JIncrByCmd) -> String {
                     json.dot_set(&cmd.arg_path.to_owned(), new_value.clone());
                     let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();
                     _value = new_value.as_i64().unwrap();
-                    return Some(v)
+                    return Some(v);
                 }
                 let new_value = if path_to_incr.is_number() {
                     if path_to_incr.is_i64() {
@@ -1235,7 +1202,7 @@ pub fn jincr_by(context: &Context, cmd: &JIncrByCmd) -> String {
 
                 if new_value.is_null() {
                     let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();
-                    return Some(v)
+                    return Some(v);
                 }
                 json.dot_set(&cmd.arg_path, new_value.clone());
                 let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();
@@ -1251,12 +1218,10 @@ pub fn jincr_by(context: &Context, cmd: &JIncrByCmd) -> String {
     print_integer(&_value)
 }
 
-pub fn jincr_by_float(context: &Context, cmd: &JIncrByFloatCmd) -> String {
-    let dbs = &DBS.read().unwrap();
-    let db = fetch_db(dbs, &context.db);
+pub fn jincr_by_float(context: Arc<RwLock<Context>>, cmd: &JIncrByFloatCmd) -> String {
     let k = cmd.arg_key.as_bytes();
     let mut _value: f64 = 0.0;
-    let data = db.fetch_and_update(k, |old| -> Option<Vec<u8>> {
+    DB.fetch_and_update(k, |old| -> Option<Vec<u8>> {
         let data = match old {
             None => {
                 let json_b = serde_json::to_vec(&Value::Null).unwrap();
@@ -1276,8 +1241,7 @@ pub fn jincr_by_float(context: &Context, cmd: &JIncrByFloatCmd) -> String {
 
         match data {
             Data::Json(mut json_b) => {
-
-                let mut json : Value = serde_json::from_slice(&json_b).unwrap_or(Value::Null);
+                let mut json: Value = serde_json::from_slice(&json_b).unwrap_or(Value::Null);
                 let path_to_incr = json.dot_get(&cmd.arg_path).unwrap_or(Some(Value::Null)).unwrap_or(Value::Null);
 
                 if path_to_incr.is_null() {
@@ -1285,19 +1249,19 @@ pub fn jincr_by_float(context: &Context, cmd: &JIncrByFloatCmd) -> String {
                     json.dot_set(&cmd.arg_path.to_owned(), new_value.clone());
                     let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();
                     _value = new_value.as_f64().unwrap();
-                    return Some(v)
+                    return Some(v);
                 }
                 let new_value = if path_to_incr.is_number() {
                     if path_to_incr.is_i64() {
                         let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();
-                        return Some(v)
+                        return Some(v);
                     } else if path_to_incr.is_f64() {
                         let inc = path_to_incr.as_f64().unwrap() + (cmd.arg_increment_value as f64);
                         json!(inc)
                     } else if path_to_incr.is_u64() {
                         let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();
 
-                        return Some(v)
+                        return Some(v);
                     } else {
                         Value::Null
                     }
@@ -1307,7 +1271,7 @@ pub fn jincr_by_float(context: &Context, cmd: &JIncrByFloatCmd) -> String {
 
                 if new_value.is_null() {
                     let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();
-                    return Some(v)
+                    return Some(v);
                 }
                 json.dot_set(&cmd.arg_path, new_value.clone());
                 let v = bincode::serialize(&Data::Json(serde_json::to_vec(&json).unwrap())).unwrap();

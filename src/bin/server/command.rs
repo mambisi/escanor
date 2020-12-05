@@ -14,7 +14,7 @@ use redis_protocol::types::Frame;
 use serde_json::Value;
 use crate::printer::*;
 
-pub fn compile_frame(frame: Frame) -> Result<Box<dyn Command>, error::SyntaxError> {
+pub fn compile_frame(frame: &Frame) -> Result<Box<dyn Command>, error::SyntaxError> {
     let tokens: Vec<String> = tokenizer::generate_token_from_frame(frame);
     match syntax_analyzer::analyse_token_stream(tokens) {
         Ok(t) => Ok(t),
@@ -61,25 +61,29 @@ pub fn compile_resp(buf: &[u8]) -> Result<Box<dyn Command>, error::SyntaxError> 
 
 use crate::network::Context;
 use crate::db::Data;
+use std::sync::{Arc, RwLock};
 
 pub trait Command {
     //fn execute(&self, db: &db::DB);
-    fn execute(&self, context: &mut Context) -> String;
+    fn execute(&self, context: Arc<RwLock<Context>>) -> String;
 }
 
-pub fn auth_context<T>(context: &mut Context, fn_args: T, f: fn(context : &Context,T) -> String) -> String {
-    if !context.auth_is_required {
-        return f(context,fn_args);
+pub fn auth_context<T>(context: Arc<RwLock<Context>>, fn_args: T, f: fn(context : Arc<RwLock<Context>>,T) -> String) -> String {
+
+    let mut w_context = context.write().unwrap();
+
+    if !w_context.auth_is_required {
+        return f(context.clone(),fn_args);
     }
 
-    let auth_key = match &context.auth_key {
+    let auth_key = match &w_context.auth_key {
         Some(k) => k.to_owned(),
         None => {
             return print_err("ERR auth");
         }
     };
 
-    let client_auth_key = match &context.client_auth_key {
+    let client_auth_key = match &w_context.client_auth_key {
         Some(k) => k.to_owned(),
         None => {
             return print_err("ERR auth");
@@ -87,12 +91,12 @@ pub fn auth_context<T>(context: &mut Context, fn_args: T, f: fn(context : &Conte
     };
 
     if auth_key == client_auth_key {
-        context.client_authenticated = true
+        w_context.client_authenticated = true
     } else {
-        context.client_authenticated = false
+        w_context.client_authenticated = false
     }
-    return if context.client_authenticated {
-        f(context, fn_args)
+    return if w_context.client_authenticated {
+        f(context.clone(), fn_args)
     } else {
         print_err("ERR auth failed")
     };
@@ -102,7 +106,7 @@ pub fn auth_context<T>(context: &mut Context, fn_args: T, f: fn(context : &Conte
 macro_rules! cmd_with_context_impl {
     ($type : ty => $func : path) => {
         impl Command for $type {
-            fn execute(&self, context: &mut Context) -> String {
+            fn execute(&self, context: Arc<RwLock<Context>>) -> String {
                 auth_context(context,self,$func)
             }
         }
@@ -156,12 +160,12 @@ make_command!(InfoCmd; -> db::info);
 make_command!(DBSizeCmd; -> db::db_size);
 
 impl Command for PingCmd {
-    fn execute(&self, _: &mut Context) -> String {
+    fn execute(&self, _: Arc<RwLock<Context>>) -> String {
         printer::print_pong()
     }
 }
 impl Command for AuthCmd {
-    fn execute(&self, context: &mut Context) -> String {
+    fn execute(&self, context: Arc<RwLock<Context>>) -> String {
         db::auth(context, self)
     }
 }

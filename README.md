@@ -2,7 +2,7 @@
 
 ## Welcome to the Escanor
 
-Escanor is a high performance in memory database written in [rust](http://rust-lang.org/) it offers performance similar to redis and implement the [redis protocol](https://redis.io/topics/protocol) with useful additions for json data manipulations. This is a side project with the vision of making it into a major project any contributors are welcome.
+Escanor is a high performance database with [sled](https://github.com/spacejam/sled) as the persistence layer and implement the [redis protocol](https://redis.io/topics/protocol) with useful additions for json data manipulations. This is a side project with the vision of making it into a major project any contributors are welcome.
 
 ## Features
 
@@ -12,9 +12,9 @@ Escanor is a high performance in memory database written in [rust](http://rust-l
 
 - Asynchronous Server 
 
-- Great support for Json Storage
+- Support for Json Document Manipulations
 
-- Support for Redis Clients and Libraries
+- Works with Redis Clients and Libraries
 
 - Client Cli included.
 

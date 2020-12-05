@@ -2,9 +2,6 @@
 extern crate clap;
 extern crate console;
 #[macro_use]
-extern crate log;
-extern crate env_logger;
-#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_json;
@@ -26,6 +23,8 @@ mod syntax_analyzer;
 mod file_dirs;
 mod codec;
 mod json;
+mod storage;
+mod persistence;
 
 use clap::{App, Arg};
 
@@ -41,12 +40,26 @@ const APP_ABOUT: &str = "Escanor is key value in memory database with disk store
 extern crate app_dirs2;
 
 use app_dirs2::*;
+use async_raft::{Raft, RaftStorage, NodeId};
+use crate::codec::{ClientRequest, ServerResponse};
+use crate::network::Network;
+use crate::storage::Storage;
+use std::sync::Arc;
+use nom::lib::std::collections::HashSet;
+use anyhow::Result;
+use tracing_subscriber;
+use tracing::{debug, error, info, span, warn, Level};
 
 const APP_INFO: AppInfo = AppInfo { name: "escanor", author: "ByteQuery" };
 
 
+pub type EscanorRaft = Raft<ClientRequest, ServerResponse, Network, Storage>;
+
+
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
+
+
     let mut default_log_flag = "";
 
     if cfg!(debug_assertions) {
@@ -55,8 +68,8 @@ async fn main() {
         default_log_flag = "info";
     }
     env::set_var("RUST_LOG", default_log_flag);
-    env_logger::init();
 
+    tracing_subscriber::fmt::init();
 
     let matches = App::new(APP_NAME)
         .version(format!("{}", style(APP_VERSION).cyan()).as_str())
@@ -82,9 +95,19 @@ async fn main() {
     }
 
     let addrs = &format!("{}:{}", host, port);
+    info!("Ready to accept connections");
 
+    let node_id : NodeId = 89;
+    let config = Arc::new(async_raft::Config::build("cls".to_owned()).validate().unwrap());
+    let network = Arc::new(Network::new());
+    let storage = Arc::new(Storage::new(node_id));
+    let raft = Arc::new(EscanorRaft::new(node_id, config, network, storage));
+    let mut members = HashSet::new();
+    members.insert(node_id);
+    raft.initialize(members).await?;
     info!("PID: {}", std::process::id());
-    config::load_conf(true).await;
+    config::load_conf(true).await?;
     db::init().await;
-    network::start_up(addrs).await;
+    network::start_up(raft, addrs).await?;
+    Ok(())
 }

@@ -2,3 +2,4 @@
 /dbs
 /logs
 /keys
+/redis-protocol/target/

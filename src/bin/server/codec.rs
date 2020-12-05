@@ -1,12 +1,31 @@
 use std::io;
 use bytes::BytesMut;
 use tokio_util::codec::{Decoder, Encoder};
-
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
 
 
 use redis_protocol::prelude::*;
+use async_raft::{AppData, AppDataResponse};
+use crate::network::Context;
+use std::sync::{Arc, RwLock};
 
 pub struct RespCodec;
+
+#[derive( Debug, Clone,Serialize, Deserialize)]
+pub struct ClientRequest {
+    pub context : Arc<RwLock<Context>>,
+    pub frame : Frame
+}
+
+#[derive( Debug, Clone,Serialize, Deserialize)]
+pub struct ServerResponse {
+    pub frame : Frame
+}
+
+impl AppData for ClientRequest {}
+impl AppDataResponse for ServerResponse {}
+
+
 
 impl Decoder for RespCodec {
     // ...
@@ -39,3 +58,6 @@ impl Encoder<Frame> for RespCodec {
         Ok(())
     }
 }
+
+
+

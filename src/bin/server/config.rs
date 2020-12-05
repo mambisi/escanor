@@ -46,8 +46,10 @@ use crate::file_dirs;
 
 use nom::AsBytes;
 use serde_yaml::{Value, Mapping};
+use anyhow::{Result, Error};
+use tracing::{debug, error, info, span, warn, Level};
 
-pub async fn load_conf(force_rewrite: bool) -> Result<(), String> {
+pub async fn load_conf(force_rewrite: bool) -> Result<()> {
     debug!("Opening config...");
     let path = match file_dirs::config_file_path() {
         None => {
@@ -60,19 +62,19 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(), String> {
     if !path.exists() && force_rewrite {
         match write_default_config_file().await {
             Ok(_) => {}
-            Err(e) => { return Err(e); }
+            Err(e) => { return Err(Error::msg(e)); }
         };
         load_conf(false);
     } else if !path.exists() && !force_rewrite {
         panic!("Config file not found");
-        return Err("Config file not found".to_string());
+        return Err(Error::msg("Config file not found"));
     }
     //path.join("");
     //rewrite()
     let mut file: File = match OpenOptions::new().read(true).open(path.clone()).await {
         Err(_e) => {
             panic!("Configuration file not loaded");
-            return Err("Configuration file not loaded".to_owned());
+            return Err(Error::msg("Configuration file not loaded"));
         }
         Ok(file) => file,
     };
@@ -83,7 +85,7 @@ pub async fn load_conf(force_rewrite: bool) -> Result<(), String> {
             n
         }
         Err(_e) => {
-            return Err("Error".to_owned());
+            return Err(Error::msg("Error".to_owned()));
         }
     };
     let conf: Conf = serde_yaml::from_slice(&contents).unwrap_or_else(|err| {

@@ -8,6 +8,8 @@ use redis_protocol::prelude::*;
 
 
 use escanor::common::parser;
+use nom::AsBytes;
+
 pub fn generate_tokens_from_resp(buf: &[u8]) -> Vec<String> {
     let mut tokens: Vec<String> = vec![];
 
@@ -53,7 +55,7 @@ pub fn generate_tokens_from_resp(buf: &[u8]) -> Vec<String> {
     return tokens;
 }
 
-pub fn generate_token_from_frame(frame : Frame) -> Vec<String> {
+pub fn generate_token_from_frame(frame : &Frame) -> Vec<String> {
     let mut tokens: Vec<String> = vec![];
     let req = match frame {
         Frame::Array(a) => {
@@ -67,13 +69,13 @@ pub fn generate_token_from_frame(frame : Frame) -> Vec<String> {
     for f in req {
         match f {
             Frame::SimpleString(s) => {
-                tokens.push(s)
+                tokens.push(s.to_owned())
             }
             Frame::Integer(i) => {
                 tokens.push(i.to_string())
             }
             Frame::BulkString(s) => {
-                let st = String::from_utf8(s).unwrap_or("".to_owned());
+                let st = String::from_utf8_lossy(s.as_bytes()).to_string();
                 tokens.push(st)
             }
             _ => {}
