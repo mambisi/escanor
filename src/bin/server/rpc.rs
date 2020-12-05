@@ -9,6 +9,7 @@ use async_raft::raft::{AppendEntriesRequest, InstallSnapshotRequest, VoteRequest
 use async_raft::raft::Entry;
 use crate::codec::ClientRequest;
 use crate::RAFT;
+use tracing::{info};
 
 
 pub struct RPC;
@@ -102,5 +103,6 @@ pub async fn start_rpc_server(addr: &str) -> Result<()> {
         .add_service(RpcServiceServer::new(router))
         .serve(addr)
         .await?;
+    info!("RPC server running at {}", addr);
     Ok(())
 }

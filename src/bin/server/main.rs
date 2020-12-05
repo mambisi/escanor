@@ -94,6 +94,12 @@ async fn main() -> Result<()> {
             .help("sets the tcp port for the server")
             .default_value("6379")
             .takes_value(true))
+        .arg(Arg::with_name("RPC")
+            .short("r")
+            .long("rpc")
+            .help("sets the rpc port for the server")
+            .default_value("50051")
+            .takes_value(true))
         .arg(Arg::with_name("RESET")
             .long("reset")
             .help("resets the config file")
@@ -102,6 +108,7 @@ async fn main() -> Result<()> {
 
     let host = "127.0.0.1";
     let port = matches.value_of("PORT").unwrap();
+    let rpc = matches.value_of("RPC").unwrap();
 
     if matches.is_present("RESET") {
         config::write_default_config_file().await;
@@ -116,6 +123,7 @@ async fn main() -> Result<()> {
     config::load_conf(true).await?;
     db::init().await;
     network::start_up( addrs).await?;
+    rpc::start_rpc_server(&format!("[::1]:{}", rpc)).await?;
     storage::monitor_metrics().await;
     Ok(())
 }
